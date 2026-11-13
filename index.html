@@ -210,9 +210,9 @@
       <input type="number" id="fTwd" min="0" step="any" inputmode="decimal">
       <small id="twdHint"></small>
     </div>
-    <div class="field"><label>繪師 <span class="req">*</span></label>
+    <div class="field"><label>繪師</label>
       <div class="artist-row">
-        <input id="fArtist" required placeholder="輸入新繪師，或從右邊選" autocomplete="off">
+        <input id="fArtist" placeholder="留空會顯示「不公開」" autocomplete="off">
         <button type="button" class="btn sm" id="artistPick" aria-expanded="false">📋 選擇繪師</button>
       </div>
       <datalist id="artistList"></datalist>
@@ -693,9 +693,9 @@
     e.preventDefault();
     if (saving || pendingUploads > 0 || !col) return;
     const amount = parseFloat($("#fAmount").value);
-    const artist = $("#fArtist").value.trim();
+    const artist = $("#fArtist").value.trim() || "不公開";   // 沒填繪師就標成「不公開」
     const date = $("#fDate").value;
-    if (!date || !artist || !isFinite(amount) || amount < 0){ $("#formErr").textContent = "請填寫日期、金額與繪師。"; return; }
+    if (!date || !isFinite(amount) || amount < 0){ $("#formErr").textContent = "請填寫日期與金額。"; return; }
     const data = {
       date, amount, currency: $("#fCurrency").value, artist,
       twd: ($("#fCurrency").value !== "TWD" && $("#fTwd").value !== "" && isFinite(parseFloat($("#fTwd").value))) ? parseFloat($("#fTwd").value) : null,
@@ -1305,7 +1305,7 @@ ${body}</div></body></html>`;
         const clean = {
           date: String(data.date || ""), amount: Number(data.amount) || 0, currency: String(data.currency || "TWD"),
           twd: (data.twd !== null && data.twd !== undefined && data.twd !== "" && isFinite(Number(data.twd))) ? Number(data.twd) : null,
-          artist: String(data.artist || ""), title: String(data.title || ""), notes: String(data.notes || ""),
+          artist: String(data.artist || "").trim() || "不公開", title: String(data.title || ""), notes: String(data.notes || ""),
           images: ids, createdAt: Number(data.createdAt) || Date.now(), updatedAt: Date.now(),
         };
         await col.doc(String(id)).set(clean);
