@@ -77,7 +77,15 @@
   .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
   .artist{font-weight:700;font-size:16px}
   .amount{font-family:"Noto Serif TC",serif;font-weight:900;color:var(--accent);font-size:17px;white-space:nowrap}
-  .meta{color:var(--muted);font-size:13px}
+  .meta{color:var(--muted);font-size:13px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .twd{font-weight:500;color:var(--ink)}
+  .twd.miss{color:var(--accent);font-weight:400}
+  .fx-link{color:var(--accent)}
+  .fx-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;margin-bottom:10px}
+  .fx-row label{font-weight:700;min-width:90px}
+  .fx-row label small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+  .fx-row input{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:9px 11px;width:100%}
+  .field small{color:var(--muted);font-size:12.5px}
   .title{font-size:14px}
   .notes{color:var(--muted);font-size:13px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
   .card .acts{display:flex;gap:6px;margin-top:auto;padding-top:8px}
@@ -163,6 +171,7 @@
     </div>
     <select id="artistFilter" aria-label="篩選繪師"><option value="">所有繪師</option></select>
     <input type="search" id="search" placeholder="搜尋繪師、標題、備註…">
+    <button class="btn sm" id="fxBtn" type="button">💱 匯率</button>
     <button class="btn sm primary" id="exportBtn">⬇ 匯出清單</button>
   </section>
 
@@ -182,6 +191,10 @@
         </div>
       </div>
     </div>
+    <div class="field" id="twdField" hidden><label>實付台幣（選填）</label>
+      <input type="number" id="fTwd" min="0" step="any" inputmode="decimal">
+      <small id="twdHint"></small>
+    </div>
     <div class="field"><label>繪師 <span class="req">*</span></label><input id="fArtist" list="artistList" required placeholder="繪師名稱"><datalist id="artistList"></datalist></div>
     <div class="field"><label>委託標題／內容</label><input id="fTitle" placeholder="例如：半身立繪、頭像、Q版…"></div>
     <div class="field"><label>備註</label><textarea id="fNotes" placeholder="平台、交稿日、用途授權…"></textarea></div>
@@ -197,6 +210,17 @@
       <button type="submit" class="btn primary" id="saveBtn">儲存</button>
     </div>
   </form>
+</div>
+
+<!-- 匯率設定 -->
+<div class="overlay" id="fxOverlay">
+  <div class="modal">
+    <h2>匯率設定</h2>
+    <p class="exp-sub" style="margin-top:0">填入「1 單位外幣＝多少台幣」。外幣委託會用這裡的匯率換算成台幣，用在累計金額、金額排序和匯出。單筆委託如果有填「實付台幣」，就以實付金額為準。</p>
+    <div id="fxRows"></div>
+    <div class="err" id="fxErr"></div>
+    <div class="foot"><button class="btn" id="fxCancel" type="button">取消</button><button class="btn primary" id="fxSave" type="button">儲存</button></div>
+  </div>
 </div>
 
 <!-- 確認刪除 -->
@@ -306,7 +330,38 @@
     const v = Number(n) || 0;
     const s = v.toLocaleString("zh-TW", {maximumFractionDigits: 2});
     const sym = {TWD:"NT$",JPY:"¥",USD:"US$",CNY:"CN¥",KRW:"₩",EUR:"€"}[cur];
-    return sym ? `${sym} ${s}` : `${s} ${cur && cur !== "其他" ? cur : ""}`.trim();
+    return sym ? `${sym} ${s}` : cur === "其他" ? `${s}（其他幣別）` : `${s} ${cur || ""}`.trim();
+  }
+
+  // ---------- 匯率換算（台幣）----------
+  const FX_CURS = ["JPY","USD","CNY","KRW","EUR"];
+  const FX_SYM = {JPY:"¥",USD:"US$",CNY:"CN¥",KRW:"₩",EUR:"€"};
+  let rates = {};
+  // 匯率存放位置（雲端版會在啟動時改成存到雲端）
+  let ratesStore = {
+    load(){ try { return JSON.parse(localStorage.getItem("commission.rates") || "{}") || {}; } catch(_){ return {}; } },
+    async save(r){ try { localStorage.setItem("commission.rates", JSON.stringify(r)); } catch(_){} }
+  };
+  rates = ratesStore.load();
+  const isTWD = (r) => (r.currency || "TWD") === "TWD";
+  const hasTwdOverride = (r) => !isTWD(r) && r.twd !== null && r.twd !== undefined && r.twd !== "" && isFinite(Number(r.twd));
+  function twdOf(r){
+    if (isTWD(r)) return Number(r.amount) || 0;
+    if (hasTwdOverride(r)) return Number(r.twd);
+    const k = Number(rates[r.currency]);
+    return k > 0 ? (Number(r.amount) || 0) * k : null;
+  }
+  const fmtTWD = (v) => "NT$ " + Math.round(v).toLocaleString("zh-TW");
+  function twdNote(r){       // 卡片/匯出用的換算說明；台幣委託回傳空字串
+    if (isTWD(r)) return "";
+    const t = twdOf(r);
+    if (t === null) return r.currency === "其他" ? "未填實付台幣" : `未設定 ${r.currency} 匯率`;
+    return `≈ ${fmtTWD(t)}${hasTwdOverride(r) ? "（實付）" : ""}`;
+  }
+  function twdTotals(rs){
+    let sum = 0, missing = 0;
+    rs.forEach(r => { const t = twdOf(r); if (t === null) missing++; else sum += t; });
+    return {sum, missing};
   }
 
   // ---------- 檢視 ----------
@@ -319,8 +374,15 @@
       return [r.artist, r.title, r.notes].some(x => String(x||"").toLowerCase().includes(q));
     });
     const byDate = (x,y) => String(x.date).localeCompare(String(y.date)) || (x.createdAt||0) - (y.createdAt||0);
-    const byAmt  = (x,y) => (Number(x.amount)||0) - (Number(y.amount)||0) || byDate(x,y);
-    const f = { "date-desc": (x,y)=>-byDate(x,y), "date-asc": byDate, "amt-desc": (x,y)=>-byAmt(x,y), "amt-asc": byAmt }[sortKey] || byDate;
+    // 金額排序以換算後的台幣為準；無法換算的排在最後
+    const amtCmp = (dir) => (x,y) => {
+      const a = twdOf(x), b = twdOf(y);
+      if (a === null && b === null) return -byDate(x,y);
+      if (a === null) return 1;
+      if (b === null) return -1;
+      return dir * (a - b) || -byDate(x,y);
+    };
+    const f = { "date-desc": (x,y)=>-byDate(x,y), "date-asc": byDate, "amt-desc": amtCmp(-1), "amt-asc": amtCmp(1) }[sortKey] || byDate;
     return rs.sort(f);
   }
 
@@ -329,15 +391,19 @@
     rs.forEach(r => { const c = r.currency || "TWD"; totals[c] = (totals[c]||0) + (Number(r.amount)||0); });
     const artists = new Set(rs.map(r => r.artist)).size;
     const imgs = rs.reduce((n,r) => n + (r.images||[]).length, 0);
-    const totalStr = Object.keys(totals).length
-      ? Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c,v]) => fmtAmount(v,c)).join("<small></small>")
+    const {sum, missing} = twdTotals(rs);
+    const curs = Object.keys(totals);
+    const breakdown = curs.length > 1 || (curs.length === 1 && curs[0] !== "TWD")
+      ? Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c,v]) => fmtAmount(v,c)).join("・") : "";
+    const totalStr = rs.length
+      ? fmtTWD(sum) + (breakdown || missing ? `<small>${breakdown ? esc(breakdown) : ""}${missing ? `${breakdown ? "<br>" : ""}⚠️ ${missing} 筆未換算，未計入 <a href="#" class="fx-link" data-open-fx>設定匯率</a>` : ""}</small>` : "")
       : "—";
-    const top = rs.length ? rs.reduce((m,r) => (Number(r.amount)||0) > (Number(m.amount)||0) ? r : m, rs[0]) : null;
+    const top = rs.filter(r => twdOf(r) !== null).reduce((m,r) => !m || twdOf(r) > twdOf(m) ? r : m, null);
     $("#stats").innerHTML = `
       <div class="stat"><div class="k">委託筆數</div><div class="v">${rs.length}</div></div>
-      <div class="stat"><div class="k">累計金額</div><div class="v">${totalStr}</div></div>
+      <div class="stat"><div class="k">累計金額（台幣）</div><div class="v">${totalStr}</div></div>
       <div class="stat"><div class="k">合作繪師</div><div class="v">${artists} <small>位・共 ${imgs} 張插圖</small></div></div>
-      <div class="stat"><div class="k">單筆最高</div><div class="v">${top ? fmtAmount(top.amount, top.currency) + `<small>${esc(top.artist)}・${esc(top.date)}</small>` : "—"}</div></div>`;
+      <div class="stat"><div class="k">單筆最高</div><div class="v">${top ? fmtTWD(twdOf(top)) + `<small>${isTWD(top) ? "" : esc(fmtAmount(top.amount, top.currency)) + "・"}${esc(top.artist)}・${esc(top.date)}</small>` : "—"}</div></div>`;
   }
 
   function renderArtists(){
@@ -368,7 +434,7 @@
       return `<article class="card">${thumb}
         <div class="body">
           <div class="row1"><span class="artist">${esc(r.artist)}</span><span class="amount">${fmtAmount(r.amount, r.currency)}</span></div>
-          <div class="meta">${esc(r.date)}</div>
+          <div class="meta">${esc(r.date)}${isTWD(r) ? "" : `<span class="twd ${twdOf(r) === null ? "miss" : ""}">${esc(twdNote(r))}</span>`}</div>
           ${r.title ? `<div class="title">${esc(r.title)}</div>` : ""}
           ${r.notes ? `<div class="notes">${esc(r.notes)}</div>` : ""}
           ${canWrite ? `<div class="acts"><button class="btn sm" data-edit="${esc(r.id)}">編輯</button><button class="btn sm danger" data-del="${esc(r.id)}">刪除</button></div>` : ""}
@@ -428,6 +494,8 @@
     $("#fArtist").value = rec?.artist || "";
     $("#fTitle").value = rec?.title || "";
     $("#fNotes").value = rec?.notes || "";
+    $("#fTwd").value = (rec && hasTwdOverride(rec)) ? rec.twd : "";
+    updateTwdField();
     formImages = (rec?.images || []).map(id => ({id}));
     uploadedThisSession = [];
     $("#formErr").textContent = "";
@@ -435,6 +503,18 @@
     $("#formOverlay").classList.add("show");
     setTimeout(() => (rec ? $("#fAmount") : $("#fArtist")).focus(), 50);
   }
+  function updateTwdField(){
+    const cur = $("#fCurrency").value, amt = parseFloat($("#fAmount").value);
+    $("#twdField").hidden = cur === "TWD";
+    if (cur === "TWD") return;
+    const k = Number(rates[cur]);
+    if (cur === "其他") { $("#fTwd").placeholder = "例如 2500"; $("#twdHint").textContent = "「其他」幣別沒有匯率可換算，填了才會計入台幣合計。"; }
+    else if (k > 0) { $("#fTwd").placeholder = isFinite(amt) ? `依匯率約 ${Math.round(amt*k)}` : ""; $("#twdHint").textContent = `目前匯率 1 ${cur} = ${k} TWD。留空就用匯率自動換算；填了以實付金額為準。`; }
+    else { $("#fTwd").placeholder = ""; $("#twdHint").innerHTML = `還沒設定 ${cur} 匯率。可以在這裡填實付台幣，或到「💱 匯率」設定。`; }
+  }
+  $("#fCurrency").addEventListener("change", updateTwdField);
+  $("#fAmount").addEventListener("input", updateTwdField);
+
   function lastCurrency(){ try { return localStorage.getItem("commission.cur") || "TWD"; } catch(e){ return "TWD"; } }
 
   async function closeForm(discard = true){
@@ -535,6 +615,7 @@
     if (!date || !artist || !isFinite(amount) || amount < 0){ $("#formErr").textContent = "請填寫日期、金額與繪師。"; return; }
     const data = {
       date, amount, currency: $("#fCurrency").value, artist,
+      twd: ($("#fCurrency").value !== "TWD" && $("#fTwd").value !== "" && isFinite(parseFloat($("#fTwd").value))) ? parseFloat($("#fTwd").value) : null,
       title: $("#fTitle").value.trim(), notes: $("#fNotes").value.trim(),
       images: formImages.filter(x => x.id).map(x => x.id),
       createdAt: editing?.createdAt || Date.now(), updatedAt: Date.now(),
@@ -555,6 +636,35 @@
         : err?.code === "invalid_argument" ? "你沒有編輯這份紀錄的權限。" : "儲存失敗，請再試一次。";
     } finally { saving = false; renderPreviews(); }
   });
+
+  // ---------- 匯率設定 ----------
+  function openFx(){
+    const counts = {}; records.forEach(r => { if (!isTWD(r)) counts[r.currency] = (counts[r.currency]||0) + 1; });
+    $("#fxRows").innerHTML = FX_CURS.map(c => `<div class="fx-row">
+        <label>1 ${c}<small>${FX_SYM[c]}${counts[c] ? `・${counts[c]} 筆委託` : ""}</small></label>
+        <input type="number" min="0" step="any" inputmode="decimal" data-fx="${c}" value="${rates[c] > 0 ? rates[c] : ""}" placeholder="例如 ${({JPY:"0.21",USD:"32",CNY:"4.4",KRW:"0.023",EUR:"35"})[c]}">
+        <span>TWD</span></div>`).join("")
+      + (counts["其他"] ? `<p class="exp-sub" style="margin:4px 0 0">另有 ${counts["其他"]} 筆「其他」幣別，請在各筆委託填寫實付台幣。</p>` : "");
+    $("#fxErr").textContent = "";
+    $("#fxOverlay").classList.add("show");
+  }
+  $("#fxBtn").onclick = openFx;
+  document.addEventListener("click", e => { if (e.target.closest("[data-open-fx]")) { e.preventDefault(); openFx(); } });
+  $("#fxCancel").onclick = () => $("#fxOverlay").classList.remove("show");
+  $("#fxOverlay").addEventListener("mousedown", e => { if (e.target.id === "fxOverlay") $("#fxOverlay").classList.remove("show"); });
+  $("#fxSave").onclick = async () => {
+    const next = {};
+    for (const inp of document.querySelectorAll("[data-fx]")){
+      const v = inp.value.trim(); if (!v) continue;
+      const n = parseFloat(v);
+      if (!isFinite(n) || n <= 0){ $("#fxErr").textContent = `${inp.dataset.fx} 的匯率要是大於 0 的數字。`; return; }
+      next[inp.dataset.fx] = n;
+    }
+    $("#fxSave").disabled = true;
+    try { await ratesStore.save(next); rates = next; render(); $("#fxOverlay").classList.remove("show"); toast("匯率已更新"); }
+    catch(_){ $("#fxErr").textContent = "儲存失敗，請再試一次。"; }
+    finally { $("#fxSave").disabled = false; }
+  };
 
   // ---------- 刪除 ----------
   let delTarget = null;
@@ -612,8 +722,9 @@
   async function exportCsv(){
     const rs = visibleRecords();
     const q = v => `"${String(v ?? "").replace(/"/g,'""')}"`;
-    const rows = [["日期","繪師","委託標題","金額","幣別","備註","插圖數"].map(q).join(",")]
-      .concat(rs.map(r => [r.date, r.artist, r.title, r.amount, r.currency, r.notes, (r.images||[]).length].map(q).join(",")));
+    const how = (r) => isTWD(r) ? "" : hasTwdOverride(r) ? "實付" : twdOf(r) === null ? "未換算" : `匯率 ${rates[r.currency]}`;
+    const rows = [["日期","繪師","委託標題","金額","幣別","台幣金額","換算方式","備註","插圖數"].map(q).join(",")]
+      .concat(rs.map(r => { const t = twdOf(r); return [r.date, r.artist, r.title, r.amount, r.currency, t === null ? "" : Math.round(t), how(r), r.notes, (r.images||[]).length].map(q).join(","); }));
     await save(`委託紀錄_${stamp()}.csv`, "﻿" + rows.join("\r\n"));
   };
 
@@ -640,7 +751,7 @@
           try { imgs += `<img src="${await imgToDataUrl(id)}" alt="">`; } catch(e){}
         }
         body += `<section><div class="h"><b>${esc(r.artist)}</b><span>${esc(fmtAmount(r.amount, r.currency))}</span></div>
-          <div class="m">${esc(r.date)}${r.title?`・${esc(r.title)}`:""}</div>
+          <div class="m">${esc(r.date)}${r.title?`・${esc(r.title)}`:""}${isTWD(r) ? "" : `<span class="t">${esc(twdNote(r))}</span>`}</div>
           ${r.notes?`<p>${esc(r.notes)}</p>`:""}${imgs?`<div class="g">${imgs}</div>`:""}</section>`;
       }
       const label = {"date-desc":"日期新到舊","date-asc":"日期舊到新","amt-desc":"金額高到低","amt-asc":"金額低到高"}[sortKey];
@@ -648,10 +759,10 @@
 <style>body{font-family:"Noto Sans TC",system-ui,sans-serif;background:#f6f1e8;color:#2b2622;margin:0;padding:24px;line-height:1.55}
 .w{max-width:860px;margin:0 auto}h1{font-family:"Noto Serif TC",serif;margin:0 0 4px}.s{color:#7c7168;margin:0 0 20px}
 section{background:#fffdf8;border:1px solid #e4dacb;border-radius:14px;padding:14px 16px;margin-bottom:14px;break-inside:avoid}
-.h{display:flex;justify-content:space-between;font-size:17px}.h span{color:#c2553a;font-weight:700}.m{color:#7c7168;font-size:14px}
+.h{display:flex;justify-content:space-between;font-size:17px}.t{float:right;color:#2b2622;font-weight:500}.h span{color:#c2553a;font-weight:700}.m{color:#7c7168;font-size:14px}
 p{white-space:pre-wrap;margin:6px 0 0;font-size:14px}.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:10px}
 .g img{width:100%;border-radius:8px;display:block}</style></head><body><div class="w">
-<h1>委託紀錄</h1><p class="s">匯出日期 ${stamp()}・共 ${rs.length} 筆・依${label}排列・累計 ${Object.entries(totals).map(([c,v])=>esc(fmtAmount(v,c))).join("／")}</p>
+<h1>委託紀錄</h1><p class="s">匯出日期 ${stamp()}・共 ${rs.length} 筆・依${label}排列・台幣累計 ${esc(fmtTWD(twdTotals(rs).sum))}${twdTotals(rs).missing ? `（另有 ${twdTotals(rs).missing} 筆未換算）` : ""}</p>
 ${body}</div></body></html>`;
       btn.textContent = "準備下載…";
       await save(`委託紀錄_${stamp()}.html`, new Blob([html], {type:"text/html"}));
@@ -734,7 +845,7 @@ ${body}</div></body></html>`;
     const artist = wrap(ctx, r.artist, INNER - amtW - 24, 1)[0];
     L.parts.push({k:"head", y:h, artist, amtStr}); h += 50;
     ctx.font = `400 26px ${SANS}`;
-    L.parts.push({k:"meta", y:h, text:r.date}); h += 42;
+    L.parts.push({k:"meta", y:h, text:r.date, twd: twdNote(r), miss: !isTWD(r) && twdOf(r) === null}); h += 42;
     if (r.title){ ctx.font = `500 28px ${SANS}`; const ls = wrap(ctx, r.title, INNER, 2); L.parts.push({k:"lines", y:h, lines:ls, font:`500 28px ${SANS}`, color:PC.ink, lh:42}); h += ls.length*42; }
     if (r.notes){ ctx.font = `400 25px ${SANS}`; const ls = wrap(ctx, r.notes, INNER, 4); h += 4; L.parts.push({k:"lines", y:h, lines:ls, font:`400 25px ${SANS}`, color:PC.muted, lh:38}); h += ls.length*38; }
     const n = bmps.length;
@@ -781,6 +892,7 @@ ${body}</div></body></html>`;
         ctx.textAlign = "left";
       } else if (p.k === "meta"){
         ctx.fillStyle = PC.muted; ctx.font = `400 26px ${SANS}`; ctx.fillText(p.text, ix, y);
+        if (p.twd){ ctx.fillStyle = p.miss ? PC.accent : PC.ink; ctx.font = `${p.miss ? 400 : 500} 26px ${SANS}`; ctx.textAlign = "right"; ctx.fillText(p.twd, ix + INNER, y); ctx.textAlign = "left"; }
       } else if (p.k === "lines"){
         ctx.fillStyle = p.color; ctx.font = p.font; p.lines.forEach((ln,i) => ctx.fillText(ln, ix, y + i*p.lh));
       } else if (p.k === "imgs"){
@@ -803,7 +915,8 @@ ${body}</div></body></html>`;
     ctx.font = `400 26px ${SANS}`;
     const sub = wrap(ctx, `匯出日期 ${today()}・共 ${rs.length} 筆・依${label}排列${artistF ? `・繪師：${artistF}` : ""}`, CW-PAD*2, 2);
     ctx.font = `900 40px ${SERIF}`;
-    const tot = wrap(ctx, "累計 " + Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c,v])=>fmtAmount(v,c)).join("／"), CW-PAD*2, 3);
+    const tt = twdTotals(rs);
+    const tot = wrap(ctx, "台幣累計 " + fmtTWD(tt.sum) + (tt.missing ? `（另有 ${tt.missing} 筆未換算）` : ""), CW-PAD*2, 3);
     return { h: 84 + sub.length*40 + 12 + tot.length*54 + 24, draw(ctx, y){
       ctx.textBaseline = "top"; ctx.textAlign = "left";
       ctx.fillStyle = PC.ink; ctx.font = `900 64px ${SERIF}`; ctx.fillText("委託紀錄", PAD, y); y += 84;
@@ -815,7 +928,7 @@ ${body}</div></body></html>`;
   // 產生頁面（每頁一個 canvas）
   async function renderPages(mode, withImages, progress){
     const rs = visibleRecords();
-    await ensureFonts("委託紀錄匯出日期共筆依排列繪師累計…+／0123456789" + rs.map(r => [r.artist,r.title,r.notes,r.date,fmtAmount(r.amount,r.currency)].join("")).join(""));
+    await ensureFonts("委託紀錄匯出日期共筆依排列繪師累計…+／0123456789" + rs.map(r => [r.artist,r.title,r.notes,r.date,fmtAmount(r.amount,r.currency),twdNote(r)].join("")).join("") + "台幣實付未換算設定匯率約");
     const pageMaxH = mode === "pdf" ? PDF_H : IMG_MAX_H;
     const total = withImages ? rs.reduce((n,r)=>n+(r.images||[]).length,0) : 0; let done = 0;
     const meas = document.createElement("canvas").getContext("2d");
@@ -918,7 +1031,7 @@ ${body}</div></body></html>`;
   async function exportBackup(progress){
     const all = [...records].sort((a,b) => String(a.date).localeCompare(String(b.date)));
     const total = all.reduce((n,r)=>n+(r.images||[]).length,0); let done = 0, failed = 0;
-    const parts = [`{"app":"commission-log","version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"count":${all.length},"records":[`];
+    const parts = [`{"app":"commission-log","version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"count":${all.length},"rates":${JSON.stringify(rates)},"records":[`];
     for (let i = 0; i < all.length; i++){
       const {id, images, ...data} = all[i];
       const imgs = [];
@@ -953,6 +1066,12 @@ ${body}</div></body></html>`;
       if (j?.app !== "commission-log" || !Array.isArray(j.records)) throw new Error("format");
       const have = new Set(records.map(r => r.id));
       const fresh = j.records.filter(r => r && r.id && !have.has(String(r.id)));
+      // 備份裡的匯率：只補上目前沒設定的幣別
+      if (j.rates && typeof j.rates === "object"){
+        const merged = {...rates}; let changed = false;
+        for (const c of FX_CURS){ const v = Number(j.rates[c]); if (!(merged[c] > 0) && v > 0){ merged[c] = v; changed = true; } }
+        if (changed){ try { await ratesStore.save(merged); rates = merged; render(); } catch(_){} }
+      }
       pendingRestore = fresh;
       const when = j.exportedAt ? new Date(j.exportedAt).toLocaleString("zh-TW") : "未知";
       $("#bkInfo").innerHTML = fresh.length
@@ -988,6 +1107,7 @@ ${body}</div></body></html>`;
         setProg(`寫入紀錄 ${ok+1}/${list.length}…`);
         const clean = {
           date: String(data.date || ""), amount: Number(data.amount) || 0, currency: String(data.currency || "TWD"),
+          twd: (data.twd !== null && data.twd !== undefined && data.twd !== "" && isFinite(Number(data.twd))) ? Number(data.twd) : null,
           artist: String(data.artist || ""), title: String(data.title || ""), notes: String(data.notes || ""),
           images: ids, createdAt: Number(data.createdAt) || Date.now(), updatedAt: Date.now(),
         };
