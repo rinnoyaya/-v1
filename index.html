@@ -40,6 +40,7 @@
   header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:22px}
   h1{font-family:"Noto Serif TC",serif;font-weight:900;font-size:clamp(26px,5vw,38px);margin:0;letter-spacing:.04em}
   .sub{color:var(--muted);margin:4px 0 0;font-size:14px}
+  h1 .author{font-family:"Noto Sans TC",system-ui,sans-serif;font-weight:500;font-size:15px;color:var(--muted);letter-spacing:.06em;margin-left:12px;vertical-align:middle;white-space:nowrap}
   .btn{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:9px 16px;cursor:pointer;
     display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .08s, background .15s}
   .btn:hover{background:var(--accent-soft)}
@@ -151,13 +152,13 @@
 <div class="wrap">
   <header class="top">
     <div>
-      <h1>委託紀錄簿</h1>
+      <h1>委託紀錄簿<span class="author">by 懧雃</span></h1>
       <p class="sub">每一筆委託、每一位繪師、每一張完成的插圖</p>
     </div>
     <button class="btn primary" id="addBtn" hidden>＋ 新增委託</button>
   </header>
 
-  <p class="local-note" id="localNote">🔒 你的紀錄和插圖只存在<b>這台裝置的瀏覽器</b>裡，不會上傳到任何地方，別人也看不到。<br>刪除 App 圖示、清除 Safari 資料或換手機前，請先到「匯出清單」下載備份檔。</p>
+  <p class="local-note" id="localNote">🔒 你的紀錄和插圖只存在<b>這台裝置的瀏覽器</b>裡，不會上傳到任何地方，別人也看不到。<br>刪除 App 圖示、清除 Safari 資料或換手機前，請先按「💾 備份／還原」下載備份檔。</p>
   <div id="notice"></div>
 
   <section class="stats" id="stats"></section>
@@ -172,6 +173,7 @@
     <select id="artistFilter" aria-label="篩選繪師"><option value="">所有繪師</option></select>
     <input type="search" id="search" placeholder="搜尋繪師、標題、備註…">
     <button class="btn sm" id="fxBtn" type="button">💱 匯率</button>
+    <button class="btn sm" id="backupBtn" type="button">💾 備份／還原</button>
     <button class="btn sm primary" id="exportBtn">⬇ 匯出清單</button>
   </section>
 
@@ -245,17 +247,21 @@
 <!-- 匯出 -->
 <div class="overlay sheet" id="expOverlay">
   <div class="modal">
-    <h2>匯出清單</h2>
+    <h2 id="sheetTitle">匯出清單</h2>
+    <div id="expSection">
     <p class="exp-sub" id="expSub"></p>
     <div class="opts" id="expOpts">
-      <button data-exp="img"><b>🖼️ 圖片（JPG）</b><span>一張長圖，適合手機存進相簿或傳給朋友</span></button>
+      <button data-exp="img"><b>🖼️ 圖片（JPG）</b><span>長圖，適合存進相簿或傳給朋友；紀錄很多時會分成幾張，可一次全部儲存</span></button>
       <button data-exp="pdf"><b>📄 PDF</b><span>A4 分頁，適合列印、存檔或傳送</span></button>
       <button data-exp="csv"><b>📊 CSV 表格</b><span>可用 Excel／Google 試算表開啟</span></button>
       <button data-exp="html"><b>🌐 圖文網頁（HTML）</b><span>含插圖的單一網頁檔，用瀏覽器開啟</span></button>
     </div>
     <label class="chk"><input type="checkbox" id="expWithImg" checked> 圖片／PDF 包含插圖</label>
+    <p class="exp-sub" style="margin:14px 2px 0">想備份或搬到新裝置？請用工具列的「💾 備份／還原」。</p>
+    </div>
 
-    <h3 class="sec">備份與還原</h3>
+    <div id="bkSection" hidden>
+    <p class="exp-sub" style="margin-top:-4px">你的紀錄只存在這台裝置。定期下載備份檔，換手機、清除瀏覽器資料或不小心刪掉時，都能從備份檔救回來。</p>
     <div class="opts">
       <button data-exp="backup"><b>💾 下載完整備份檔</b><span>所有紀錄＋原尺寸插圖存成一個檔案，也可用來搬到新裝置</span></button>
       <button id="bkRestoreBtn" type="button"><b>📂 從備份檔還原</b><span>選擇之前下載的備份檔，把不見的紀錄加回來</span></button>
@@ -266,7 +272,18 @@
       <p id="bkInfo"></p>
       <div class="foot"><button class="btn sm" id="bkCancel">取消</button><button class="btn sm primary" id="bkGo">開始還原</button></div>
     </div>
+    </div>
     <div class="prog" id="expProgress"></div>
+    <div class="ready" id="multiReady" hidden>
+      <div class="fn" id="multiName"></div>
+      <div class="row">
+        <button class="btn primary" id="multiShare" type="button" hidden>📤 一次儲存全部</button>
+        <button class="btn" id="multiZip" type="button">📦 一次下載（ZIP）</button>
+        <button class="btn" id="multiEach" type="button">逐張儲存</button>
+        <button class="btn" id="multiCancel" type="button">取消</button>
+      </div>
+      <p class="exp-sub" id="multiTip" style="margin:10px 0 0"></p>
+    </div>
     <div class="ready" id="saveReady" hidden>
       <div class="fn" id="saveName"></div>
       <div class="row">
@@ -694,7 +711,7 @@
 
   // ---------- 匯出 ----------
   // 檔案準備好後，讓使用者親手點「分享／儲存」（iOS 需要使用者點擊才能開分享選單）
-  const MIME = {csv:"text/csv", json:"application/json", html:"text/html", pdf:"application/pdf", jpg:"image/jpeg"};
+  const MIME = {zip:"application/zip", csv:"text/csv", json:"application/json", html:"text/html", pdf:"application/pdf", jpg:"image/jpeg"};
   function save(filename, data){
     const ext = filename.split(".").pop().toLowerCase();
     const type = MIME[ext] || "application/octet-stream";
@@ -1000,15 +1017,97 @@ ${body}</div></body></html>`;
     return new Blob(chunks, {type:"application/pdf"});
   }
 
+  // ---- 多個檔案：打包成 ZIP（不壓縮，JPG 本來就壓縮過了）
+  const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+  function crc32(u){ let c = 0xFFFFFFFF; for (let i = 0; i < u.length; i++) c = CRC_TABLE[(c ^ u[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+  async function makeZip(files){
+    const enc = new TextEncoder(), out = [], central = []; let off = 0;
+    const d = new Date();
+    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    for (const f of files){
+      const data = new Uint8Array(await f.blob.arrayBuffer()), name = enc.encode(f.name), crc = crc32(data);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+      lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+      out.push(new Uint8Array(lh.buffer), name, data);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true); ch.setUint16(10, 0, true);
+      ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+      ch.setUint32(42, off, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      off += 30 + name.length + data.length;
+    }
+    const cdSize = central.reduce((n, u) => n + u.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+    return new Blob([...out, ...central, new Uint8Array(end.buffer)], {type: "application/zip"});
+  }
+
+  const IS_APP = true;
+  // 產生多張圖時，讓使用者選擇一次存全部或逐張存
+  function chooseMulti(files){
+    const box = $("#multiReady"), shareBtn = $("#multiShare");
+    let canShareAll = false;
+    if (IS_APP && navigator.canShare && navigator.share){
+      try { canShareAll = navigator.canShare({files: files.map(f => new File([f.blob], f.name, {type: "image/jpeg"}))}); } catch(_){}
+    }
+    const mb = files.reduce((n, f) => n + f.blob.size, 0) / 1048576;
+    $("#multiName").innerHTML = `✅ 清單比較長，已自動分成 <b>${files.length} 張圖片</b><span style="white-space:nowrap">（共 ${mb.toFixed(1)} MB）</span>。`;
+    shareBtn.hidden = !canShareAll;
+    $("#multiZip").className = canShareAll ? "btn" : "btn primary";
+    $("#multiTip").innerHTML = canShareAll
+      ? "💡 按「一次儲存全部」後選「儲存 " + files.length + " 張影像」，就會全部存進相簿。"
+      : "💡 建議用「一次下載（ZIP）」：所有圖片會包成一個壓縮檔，只要按一次。iPhone 可以在「檔案」App 點一下壓縮檔解開；電腦直接點兩下就能解開。";
+    box.hidden = false;
+    setTimeout(() => box.scrollIntoView({behavior: "smooth", block: "center"}), 50);
+    return new Promise(resolve => {
+      const done = (v) => { box.hidden = true; shareBtn.onclick = $("#multiZip").onclick = $("#multiEach").onclick = $("#multiCancel").onclick = null; resolve(v); };
+      shareBtn.onclick = async () => {
+        try {
+          await navigator.share({files: files.map(f => new File([f.blob], f.name, {type: "image/jpeg"}))});
+          done("shared");
+        } catch(err){ if (err && err.name === "AbortError") return; toast("無法一次分享，請改用 ZIP 或逐張儲存"); }
+      };
+      $("#multiZip").onclick = () => done("zip");
+      $("#multiEach").onclick = () => done("each");
+      $("#multiCancel").onclick = () => done(null);
+    });
+  }
+
   async function exportImage(progress){
     const pages = await renderPages("img", $("#expWithImg").checked, progress);
+    const base = `委託紀錄_${today()}`;
+    if (pages.length === 1){
+      progress("");
+      await save(`${base}.jpg`, await toJpeg(pages[0], 0.9));
+      pages[0].width = pages[0].height = 0;
+      return;
+    }
+    const files = [];
     for (let i = 0; i < pages.length; i++){
-      progress(pages.length > 1 ? `第 ${i+1}/${pages.length} 張已準備好` : "");
-      const b = await toJpeg(pages[i], 0.9);
-      const name = pages.length > 1 ? `委託紀錄_${today()}_${i+1}.jpg` : `委託紀錄_${today()}.jpg`;
-      const ok = await save(name, b);  // 每張圖各自按一次分享／儲存
-      if (!ok) break;
+      progress(`轉成圖片 ${i+1}/${pages.length}…`);
+      files.push({name: `${base}_${String(i+1).padStart(2, "0")}.jpg`, blob: await toJpeg(pages[i], 0.9)});
       pages[i].width = pages[i].height = 0;   // 釋放記憶體
+    }
+    progress("");
+    const how = await chooseMulti(files);
+    if (how === "zip"){
+      progress("打包中…");
+      const zip = await makeZip(files);
+      progress("");
+      await save(`${base}_${files.length}張.zip`, zip);
+    } else if (how === "each"){
+      for (let i = 0; i < files.length; i++){
+        progress(`第 ${i+1}/${files.length} 張`);
+        if (!await save(files[i].name, files[i].blob)) break;
+      }
+      progress("");
+    } else if (how === "shared"){
+      toast(`已送出 ${files.length} 張圖片`);
     }
   }
   async function exportPdf(progress){
@@ -1160,7 +1259,14 @@ ${body}</div></body></html>`;
       $("#bkConfirm").hidden = true; pendingRestore = null;
     } catch(err){
       setProg(err?.code === "quota_exceeded" ? `儲存空間已滿，已還原 ${ok} 筆。` : `還原中斷，已還原 ${ok} 筆。可再選一次同一個備份檔繼續（已還原的會自動略過，缺圖的會再補）。`);
-    } finally { exporting = false; $("#bkGo").disabled = false; $("#bkCancel").disabled = false; }
+    } finally {
+      exporting = false; $("#bkGo").disabled = false; $("#bkCancel").disabled = false;
+      // 還原後清單有資料了，讓匯出按鈕可以按
+      const n = visibleRecords().length;
+      $("#expOpts").querySelectorAll("button").forEach(b => b.disabled = !n);
+      const bk = document.querySelector('[data-exp="backup"]'); if (bk) bk.disabled = !records.length;
+      $("#expSub").textContent = n ? `會依目前的排序與篩選匯出 ${n} 筆紀錄` : "目前沒有可匯出的紀錄";
+    }
   };
 
   // 匯出面板
@@ -1173,9 +1279,20 @@ ${body}</div></body></html>`;
     $("#expOpts").closest(".modal").querySelector('[data-exp="backup"]').disabled = !records.length;
     $("#bkRestoreBtn").hidden = !canWrite;
     $("#bkLast").textContent = lastBackupText();
-    $("#bkConfirm").hidden = true; pendingRestore = null; $("#saveReady").hidden = true;
+    $("#bkConfirm").hidden = true; pendingRestore = null; $("#saveReady").hidden = true; $("#multiReady").hidden = true;
     setProg(""); $("#expOverlay").classList.add("show");
   };
+  // 同一個面板，分成「匯出」和「備份／還原」兩種模式
+  const openSheetBase = $("#exportBtn").onclick;
+  function openSheet(mode){
+    openSheetBase();
+    $("#expSection").hidden = mode !== "export";
+    $("#bkSection").hidden = mode !== "backup";
+    $("#sheetTitle").textContent = mode === "export" ? "匯出清單" : "備份與還原";
+  }
+  $("#exportBtn").onclick = () => openSheet("export");
+  $("#backupBtn").onclick = () => openSheet("backup");
+
   $("#expClose").onclick = () => { if (!exporting) $("#expOverlay").classList.remove("show"); };
   $("#expOverlay").addEventListener("mousedown", e => { if (e.target.id === "expOverlay" && !exporting) $("#expOverlay").classList.remove("show"); });
   $("#expOverlay").addEventListener("click", async e => {
@@ -1284,7 +1401,7 @@ ${body}</div></body></html>`;
     const days = last ? (Date.now() - new Date(last).getTime()) / 864e5 : Infinity;
     if (days >= 14){
       setNotice(`${last ? `距離上次備份已經 ${Math.floor(days)} 天` : "你還沒有下載過備份"}。資料只存在這台裝置，建議現在備份一次。 <button class="btn sm primary" id="remindBackup" style="margin-left:6px">立即備份</button>`);
-      const b = $("#remindBackup"); if (b) b.onclick = () => $("#exportBtn").click();
+      const b = $("#remindBackup"); if (b) b.onclick = () => $("#backupBtn").click();
     } else setNotice("");
   }
 

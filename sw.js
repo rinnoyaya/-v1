@@ -1,5 +1,5 @@
 // 委託紀錄簿：離線快取。只快取 App 本身的檔案，你的紀錄不會經過這裡。
-const VERSION = "v3";
+const VERSION = "v5";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
