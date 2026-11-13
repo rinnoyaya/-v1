@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>委託紀錄簿</title>
+<meta name="theme-color" content="#f6f1e8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="委託紀錄簿">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#f6f1e8; --card:#fffdf8; --ink:#2b2622; --muted:#7c7168; --line:#e4dacb;
+    --accent:#c2553a; --accent-ink:#fff; --accent-soft:#f6e0d8; --ok:#3d7a5a;
+    --shadow:0 1px 2px rgba(60,40,20,.06),0 6px 20px rgba(60,40,20,.07);
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --paper:#1d1a17; --card:#26221e; --ink:#efe7dc; --muted:#a59a8e; --line:#3a342e;
+      --accent:#e07a5c; --accent-soft:#3d2a23; --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25); }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html,body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Noto Sans TC",system-ui,-apple-system,sans-serif;font-size:15px;line-height:1.55}
+  button,input,select,textarea{font:inherit;color:inherit}
+  .wrap{max-width:1080px;margin:0 auto;padding:calc(28px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right)) calc(80px + env(safe-area-inset-bottom)) calc(18px + env(safe-area-inset-left))}
+  .lb{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+  .ready{margin-top:10px;border:1px solid var(--ok);border-radius:12px;padding:12px 14px;background:var(--card)}
+  .ready .fn{font-size:14px;word-break:break-all;margin-bottom:10px}
+  .ready .fn small{color:var(--muted)}
+  .ready .row{display:flex;gap:8px;flex-wrap:wrap}
+  .ready a.btn{text-decoration:none;color:inherit}
+  header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:22px}
+  h1{font-family:"Noto Serif TC",serif;font-weight:900;font-size:clamp(26px,5vw,38px);margin:0;letter-spacing:.04em}
+  .sub{color:var(--muted);margin:4px 0 0;font-size:14px}
+  .btn{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:9px 16px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;transition:transform .08s, background .15s}
+  .btn:hover{background:var(--accent-soft)}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn.danger{color:var(--accent);border-color:var(--accent)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .btn.sm{padding:6px 12px;font-size:13px}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
+  .stat .k{color:var(--muted);font-size:12.5px}
+  .stat .v{font-family:"Noto Serif TC",serif;font-weight:900;font-size:22px;margin-top:2px;word-break:break-all}
+  .stat .v small{font-family:"Noto Sans TC",sans-serif;font-weight:500;font-size:12px;color:var(--muted);display:block}
+
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+  .seg button{white-space:nowrap;border:0;background:transparent;padding:7px 12px;cursor:pointer;font-size:13.5px}
+  .seg button.on{background:var(--ink);color:var(--paper)}
+  .toolbar input[type=search], .toolbar select{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:7px 12px;min-width:0}
+  .toolbar input[type=search]{flex:1 1 160px}
+  .toolbar .grow{flex:1}
+  .exports{display:flex;gap:6px;flex-wrap:wrap}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+  .thumbs{position:relative;aspect-ratio:4/3;background:var(--accent-soft);cursor:zoom-in;overflow:hidden}
+  .thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+  .thumbs .count{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.6);color:#fff;font-size:12px;padding:2px 8px;border-radius:999px}
+  img.broken{opacity:0}
+  .thumbs.empty{display:grid;place-items:center;color:var(--muted);font-size:13px;cursor:default}
+  .card .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:4px;flex:1}
+  .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .artist{font-weight:700;font-size:16px}
+  .amount{font-family:"Noto Serif TC",serif;font-weight:900;color:var(--accent);font-size:17px;white-space:nowrap}
+  .meta{color:var(--muted);font-size:13px}
+  .title{font-size:14px}
+  .notes{color:var(--muted);font-size:13px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .card .acts{display:flex;gap:6px;margin-top:auto;padding-top:8px}
+
+  .empty-state{text-align:center;padding:60px 20px;color:var(--muted);background:var(--card);border:1px dashed var(--line);border-radius:var(--radius)}
+  .empty-state b{display:block;font-family:"Noto Serif TC",serif;font-size:20px;color:var(--ink);margin-bottom:6px}
+  .local-note{font-size:13px;color:var(--muted);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 13px;margin:0 0 14px}
+  .notice{background:var(--accent-soft);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:14px}
+
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(20,14,10,.55);display:none;align-items:flex-start;justify-content:center;z-index:50;overflow-y:auto;padding:24px 12px}
+  .overlay.show{display:flex}
+  .modal{background:var(--card);border-radius:18px;width:min(560px,100%);padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+  .modal h2{font-family:"Noto Serif TC",serif;margin:0 0 14px;font-size:21px}
+  .field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+  .field label{font-size:13px;color:var(--muted);font-weight:500}
+  .field input,.field textarea,.field select{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:9px 11px;width:100%}
+  .field textarea{min-height:70px;resize:vertical}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .amt{display:grid;grid-template-columns:1fr 92px;gap:6px}
+  .req{color:var(--accent)}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:14px;text-align:center;color:var(--muted);cursor:pointer;font-size:14px}
+  .drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .previews{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px}
+  .pv{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--paper);border:1px solid var(--line)}
+  .pv img{width:100%;height:100%;object-fit:cover}
+  .pv .x{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;cursor:pointer;line-height:1;font-size:14px}
+  .pv.loading{display:grid;place-items:center;font-size:12px;color:var(--muted)}
+  .modal .foot{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+  .err{color:var(--accent);font-size:13px;min-height:1em}
+
+  .exp-sub{color:var(--muted);margin:-6px 0 14px;font-size:14px}
+  .opts{display:grid;gap:8px}
+  .opts button{text-align:left;border:1px solid var(--line);background:var(--paper);border-radius:12px;padding:12px 14px;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+  .opts button:hover{border-color:var(--accent);background:var(--accent-soft)}
+  .opts button:disabled{opacity:.5;cursor:default}
+  .opts b{font-size:15.5px}
+  .opts span{color:var(--muted);font-size:13px}
+  .chk{display:flex;align-items:center;gap:8px;margin:12px 2px 0;font-size:14px;color:var(--muted)}
+  .chk input{width:18px;height:18px;accent-color:var(--accent)}
+  .sec{font-family:"Noto Serif TC",serif;font-size:17px;margin:20px 0 10px;padding-top:16px;border-top:1px solid var(--line)}
+  .bk-confirm{margin-top:10px;border:1px solid var(--accent);background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:14px}
+  .bk-confirm p{margin:0 0 8px}
+  .prog{min-height:1.4em;margin-top:10px;font-size:14px;color:var(--accent);font-weight:500}
+  @media (max-width:600px){
+    .overlay.sheet{align-items:flex-end;padding:0}
+    .overlay.sheet .modal{width:100%;border-radius:20px 20px 0 0;padding-bottom:calc(20px + env(safe-area-inset-bottom))}
+  }
+  /* lightbox */
+  .lb{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;z-index:60;flex-direction:column}
+  .lb.show{display:flex}
+  .lb .stage{flex:1;display:flex;align-items:center;justify-content:center;padding:12px;min-height:0}
+  .lb img{max-width:100%;max-height:100%;object-fit:contain}
+  .lb .bar{display:flex;justify-content:space-between;align-items:center;color:#fff;padding:10px 14px;gap:10px}
+  .lb button{background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:999px;padding:8px 14px;cursor:pointer}
+
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:999px;opacity:0;transition:.25s;z-index:70;pointer-events:none;font-size:14px;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media (max-width:520px){ .two{grid-template-columns:1fr} .wrap{padding-top:20px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>委託紀錄簿</h1>
+      <p class="sub">每一筆委託、每一位繪師、每一張完成的插圖</p>
+    </div>
+    <button class="btn primary" id="addBtn" hidden>＋ 新增委託</button>
+  </header>
+
+  <p class="local-note" id="localNote">🔒 你的紀錄和插圖只存在<b>這台裝置的瀏覽器</b>裡，不會上傳到任何地方，別人也看不到。<br>刪除 App 圖示、清除 Safari 資料或換手機前，請先到「匯出清單」下載備份檔。</p>
+  <div id="notice"></div>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="toolbar">
+    <div class="seg" id="sortSeg" role="group" aria-label="排序">
+      <button data-sort="date-desc" class="on">最新</button>
+      <button data-sort="date-asc">最舊</button>
+      <button data-sort="amt-desc">金額高</button>
+      <button data-sort="amt-asc">金額低</button>
+    </div>
+    <select id="artistFilter" aria-label="篩選繪師"><option value="">所有繪師</option></select>
+    <input type="search" id="search" placeholder="搜尋繪師、標題、備註…">
+    <button class="btn sm primary" id="exportBtn">⬇ 匯出清單</button>
+  </section>
+
+  <section id="list"></section>
+</div>
+
+<!-- 新增/編輯 -->
+<div class="overlay" id="formOverlay">
+  <form class="modal" id="form" autocomplete="off">
+    <h2 id="formTitle">新增委託</h2>
+    <div class="two">
+      <div class="field"><label>委託日期 <span class="req">*</span></label><input type="date" id="fDate" required></div>
+      <div class="field"><label>委託金額 <span class="req">*</span></label>
+        <div class="amt">
+          <input type="number" id="fAmount" min="0" step="any" inputmode="decimal" required placeholder="0">
+          <select id="fCurrency"><option>TWD</option><option>JPY</option><option>USD</option><option>CNY</option><option>KRW</option><option>EUR</option><option>其他</option></select>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>繪師 <span class="req">*</span></label><input id="fArtist" list="artistList" required placeholder="繪師名稱"><datalist id="artistList"></datalist></div>
+    <div class="field"><label>委託標題／內容</label><input id="fTitle" placeholder="例如：半身立繪、頭像、Q版…"></div>
+    <div class="field"><label>備註</label><textarea id="fNotes" placeholder="平台、交稿日、用途授權…"></textarea></div>
+    <div class="field">
+      <label>完成插圖（可多張）</label>
+      <div class="drop" id="drop">點此選擇圖片，或把圖片拖曳到這裡</div>
+      <input type="file" id="fFiles" accept="image/*" multiple hidden>
+      <div class="previews" id="previews"></div>
+    </div>
+    <div class="err" id="formErr"></div>
+    <div class="foot">
+      <button type="button" class="btn" id="cancelBtn">取消</button>
+      <button type="submit" class="btn primary" id="saveBtn">儲存</button>
+    </div>
+  </form>
+</div>
+
+<!-- 確認刪除 -->
+<div class="overlay" id="confirmOverlay">
+  <div class="modal">
+    <h2>刪除這筆委託？</h2>
+    <p id="confirmText" style="margin:0 0 16px;color:var(--muted)"></p>
+    <div class="foot">
+      <button class="btn" id="confirmNo">取消</button>
+      <button class="btn primary" id="confirmYes">刪除</button>
+    </div>
+  </div>
+</div>
+
+<!-- 看圖 -->
+<div class="lb" id="lb">
+  <div class="bar"><span id="lbCap"></span><button id="lbClose">關閉 ✕</button></div>
+  <div class="stage"><img id="lbImg" alt=""></div>
+  <div class="bar"><button id="lbPrev">‹ 上一張</button><span id="lbIdx"></span><button id="lbNext">下一張 ›</button></div>
+</div>
+
+<!-- 匯出 -->
+<div class="overlay sheet" id="expOverlay">
+  <div class="modal">
+    <h2>匯出清單</h2>
+    <p class="exp-sub" id="expSub"></p>
+    <div class="opts" id="expOpts">
+      <button data-exp="img"><b>🖼️ 圖片（JPG）</b><span>一張長圖，適合手機存進相簿或傳給朋友</span></button>
+      <button data-exp="pdf"><b>📄 PDF</b><span>A4 分頁，適合列印、存檔或傳送</span></button>
+      <button data-exp="csv"><b>📊 CSV 表格</b><span>可用 Excel／Google 試算表開啟</span></button>
+      <button data-exp="html"><b>🌐 圖文網頁（HTML）</b><span>含插圖的單一網頁檔，用瀏覽器開啟</span></button>
+    </div>
+    <label class="chk"><input type="checkbox" id="expWithImg" checked> 圖片／PDF 包含插圖</label>
+
+    <h3 class="sec">備份與還原</h3>
+    <div class="opts">
+      <button data-exp="backup"><b>💾 下載完整備份檔</b><span>所有紀錄＋原尺寸插圖存成一個檔案，也可用來搬到新裝置</span></button>
+      <button id="bkRestoreBtn" type="button"><b>📂 從備份檔還原</b><span>選擇之前下載的備份檔，把不見的紀錄加回來</span></button>
+    </div>
+    <input type="file" id="bkFile" accept=".json,application/json" hidden>
+    <p class="exp-sub" id="bkLast" style="margin:8px 2px 0"></p>
+    <div class="bk-confirm" id="bkConfirm" hidden>
+      <p id="bkInfo"></p>
+      <div class="foot"><button class="btn sm" id="bkCancel">取消</button><button class="btn sm primary" id="bkGo">開始還原</button></div>
+    </div>
+    <div class="prog" id="expProgress"></div>
+    <div class="ready" id="saveReady" hidden>
+      <div class="fn" id="saveName"></div>
+      <div class="row">
+        <button class="btn primary" id="saveShare" type="button">📤 分享／儲存</button>
+        <a class="btn" id="saveDl">⬇ 下載</a>
+        <button class="btn" id="saveCancel" type="button">取消</button>
+      </div>
+    </div>
+    <div class="foot"><button class="btn" id="expClose">關閉</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  // 圖片網址：優先用平台回傳的網址（依目前檢視而正確），否則用 /_blob/<id>
+  const urlMap = new Map();      // id -> 可顯示的網址
+  const blobUrl = (id) => urlMap.get(id) || ("/_blob/" + id);
+  const retried = new Set();
+  // 圖片載入失敗時：改用 fetch 取回後轉成 blob: 網址再顯示
+  document.addEventListener("error", async (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !img.dataset.asset) return;
+    const id = img.dataset.asset;
+    if (retried.has(id)) { img.classList.add("broken"); return; }
+    retried.add(id);
+    const candidates = [urlMap.get(id), "/_blob/" + id].filter(Boolean);
+    for (const u of candidates){
+      try {
+        const r = await fetch(u, {credentials: "include"});
+        if (!r.ok) continue;
+        const b = await r.blob();
+        if (!b.size) continue;
+        const obj = URL.createObjectURL(b);
+        urlMap.set(id, obj);
+        document.querySelectorAll(`img[data-asset="${id}"]`).forEach(el => { el.classList.remove("broken"); el.src = obj; });
+        return;
+      } catch(_){}
+    }
+    document.querySelectorAll(`img[data-asset="${id}"]`).forEach(el => el.classList.add("broken"));
+  }, true);
+  const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0,10); };
+
+  let db = null, assets = null, downloads = null, col = null;
+  let records = [];          // {id, ...data}
+  let loaded = false;
+  let canWrite = false;
+  let sortKey = "date-desc";
+  try { const s = localStorage.getItem("commission.sort"); if (s) sortKey = s; } catch(e){}
+
+  function toast(msg, ms = 2600){
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), ms);
+  }
+  function setNotice(html){ $("#notice").innerHTML = html ? `<div class="notice">${html}</div>` : ""; }
+
+  function fmtAmount(n, cur){
+    const v = Number(n) || 0;
+    const s = v.toLocaleString("zh-TW", {maximumFractionDigits: 2});
+    const sym = {TWD:"NT$",JPY:"¥",USD:"US$",CNY:"CN¥",KRW:"₩",EUR:"€"}[cur];
+    return sym ? `${sym} ${s}` : `${s} ${cur && cur !== "其他" ? cur : ""}`.trim();
+  }
+
+  // ---------- 檢視 ----------
+  function visibleRecords(){
+    const q = $("#search").value.trim().toLowerCase();
+    const a = $("#artistFilter").value;
+    let rs = records.filter(r => {
+      if (a && r.artist !== a) return false;
+      if (!q) return true;
+      return [r.artist, r.title, r.notes].some(x => String(x||"").toLowerCase().includes(q));
+    });
+    const byDate = (x,y) => String(x.date).localeCompare(String(y.date)) || (x.createdAt||0) - (y.createdAt||0);
+    const byAmt  = (x,y) => (Number(x.amount)||0) - (Number(y.amount)||0) || byDate(x,y);
+    const f = { "date-desc": (x,y)=>-byDate(x,y), "date-asc": byDate, "amt-desc": (x,y)=>-byAmt(x,y), "amt-asc": byAmt }[sortKey] || byDate;
+    return rs.sort(f);
+  }
+
+  function renderStats(rs){
+    const totals = {};
+    rs.forEach(r => { const c = r.currency || "TWD"; totals[c] = (totals[c]||0) + (Number(r.amount)||0); });
+    const artists = new Set(rs.map(r => r.artist)).size;
+    const imgs = rs.reduce((n,r) => n + (r.images||[]).length, 0);
+    const totalStr = Object.keys(totals).length
+      ? Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c,v]) => fmtAmount(v,c)).join("<small></small>")
+      : "—";
+    const top = rs.length ? rs.reduce((m,r) => (Number(r.amount)||0) > (Number(m.amount)||0) ? r : m, rs[0]) : null;
+    $("#stats").innerHTML = `
+      <div class="stat"><div class="k">委託筆數</div><div class="v">${rs.length}</div></div>
+      <div class="stat"><div class="k">累計金額</div><div class="v">${totalStr}</div></div>
+      <div class="stat"><div class="k">合作繪師</div><div class="v">${artists} <small>位・共 ${imgs} 張插圖</small></div></div>
+      <div class="stat"><div class="k">單筆最高</div><div class="v">${top ? fmtAmount(top.amount, top.currency) + `<small>${esc(top.artist)}・${esc(top.date)}</small>` : "—"}</div></div>`;
+  }
+
+  function renderArtists(){
+    const names = [...new Set(records.map(r => r.artist).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"zh-Hant"));
+    const sel = $("#artistFilter"), cur = sel.value;
+    sel.innerHTML = `<option value="">所有繪師（${names.length}）</option>` + names.map(n => `<option ${n===cur?"selected":""}>${esc(n)}</option>`).join("");
+    if (cur && !names.includes(cur)) sel.value = "";
+    $("#artistList").innerHTML = names.map(n => `<option value="${esc(n)}">`).join("");
+  }
+
+  function render(){
+    document.querySelectorAll("#sortSeg button").forEach(b => b.classList.toggle("on", b.dataset.sort === sortKey));
+    renderArtists();
+    const rs = visibleRecords();
+    renderStats(rs);
+    const list = $("#list");
+    if (!loaded){ list.innerHTML = `<div class="empty-state"><b>讀取中…</b></div>`; return; }
+    if (!records.length){
+      list.innerHTML = `<div class="empty-state"><b>還沒有任何委託紀錄</b>${canWrite ? "按右上角「＋ 新增委託」記下第一筆吧。" : ""}</div>`;
+      return;
+    }
+    if (!rs.length){ list.innerHTML = `<div class="empty-state"><b>找不到符合的紀錄</b>試試其他關鍵字或繪師。</div>`; return; }
+    list.innerHTML = `<div class="grid">${rs.map(r => {
+      const imgs = r.images || [];
+      const thumb = imgs.length
+        ? `<div class="thumbs" data-view="${esc(r.id)}"><img loading="lazy" data-asset="${esc(imgs[0])}" src="${blobUrl(imgs[0])}" alt="${esc(r.artist)} 的插圖">${imgs.length>1?`<span class="count">${imgs.length} 張</span>`:""}</div>`
+        : `<div class="thumbs empty">尚無插圖</div>`;
+      return `<article class="card">${thumb}
+        <div class="body">
+          <div class="row1"><span class="artist">${esc(r.artist)}</span><span class="amount">${fmtAmount(r.amount, r.currency)}</span></div>
+          <div class="meta">${esc(r.date)}</div>
+          ${r.title ? `<div class="title">${esc(r.title)}</div>` : ""}
+          ${r.notes ? `<div class="notes">${esc(r.notes)}</div>` : ""}
+          ${canWrite ? `<div class="acts"><button class="btn sm" data-edit="${esc(r.id)}">編輯</button><button class="btn sm danger" data-del="${esc(r.id)}">刪除</button></div>` : ""}
+        </div></article>`;
+    }).join("")}</div>`;
+  }
+
+  $("#sortSeg").addEventListener("click", e => {
+    const b = e.target.closest("button[data-sort]"); if (!b) return;
+    sortKey = b.dataset.sort; try { localStorage.setItem("commission.sort", sortKey); } catch(e){}
+    render();
+  });
+  $("#artistFilter").addEventListener("change", render);
+  $("#search").addEventListener("input", render);
+
+  $("#list").addEventListener("click", e => {
+    const v = e.target.closest("[data-view]"); if (v) return openLightbox(v.dataset.view, 0);
+    const ed = e.target.closest("[data-edit]"); if (ed) return openForm(records.find(r => r.id === ed.dataset.edit));
+    const dl = e.target.closest("[data-del]"); if (dl) return askDelete(records.find(r => r.id === dl.dataset.del));
+  });
+
+  // ---------- 看圖 ----------
+  let lbRec = null, lbI = 0;
+  function openLightbox(id, i){ lbRec = records.find(r => r.id === id); if (!lbRec) return; lbI = i; showLb(); $("#lb").classList.add("show"); }
+  function showLb(){
+    const imgs = lbRec.images || []; if (!imgs.length) return;
+    lbI = (lbI + imgs.length) % imgs.length;
+    $("#lbImg").dataset.asset = imgs[lbI];
+    $("#lbImg").src = blobUrl(imgs[lbI]);
+    $("#lbCap").textContent = `${lbRec.artist}・${lbRec.date}`;
+    $("#lbIdx").textContent = `${lbI+1} / ${imgs.length}`;
+    $("#lbPrev").style.visibility = $("#lbNext").style.visibility = imgs.length > 1 ? "visible" : "hidden";
+  }
+  $("#lbClose").onclick = () => $("#lb").classList.remove("show");
+  $("#lbPrev").onclick = () => { lbI--; showLb(); };
+  $("#lbNext").onclick = () => { lbI++; showLb(); };
+  $("#lb").addEventListener("click", e => { if (e.target.classList.contains("stage")) $("#lb").classList.remove("show"); });
+  document.addEventListener("keydown", e => {
+    if (!$("#lb").classList.contains("show")) { if (e.key === "Escape") closeForm(); return; }
+    if (e.key === "Escape") $("#lb").classList.remove("show");
+    if (e.key === "ArrowLeft") { lbI--; showLb(); }
+    if (e.key === "ArrowRight") { lbI++; showLb(); }
+  });
+
+  // ---------- 表單 ----------
+  let editing = null;        // record or null
+  let formImages = [];       // [{id} | {pending:true, key}]
+  let uploadedThisSession = []; // ids uploaded in this form session (cleanup on cancel)
+  let pendingUploads = 0;
+
+  function openForm(rec){
+    editing = rec || null;
+    $("#formTitle").textContent = rec ? "編輯委託" : "新增委託";
+    $("#fDate").value = rec?.date || today();
+    $("#fAmount").value = rec?.amount ?? "";
+    $("#fCurrency").value = rec?.currency || lastCurrency();
+    $("#fArtist").value = rec?.artist || "";
+    $("#fTitle").value = rec?.title || "";
+    $("#fNotes").value = rec?.notes || "";
+    formImages = (rec?.images || []).map(id => ({id}));
+    uploadedThisSession = [];
+    $("#formErr").textContent = "";
+    renderPreviews();
+    $("#formOverlay").classList.add("show");
+    setTimeout(() => (rec ? $("#fAmount") : $("#fArtist")).focus(), 50);
+  }
+  function lastCurrency(){ try { return localStorage.getItem("commission.cur") || "TWD"; } catch(e){ return "TWD"; } }
+
+  async function closeForm(discard = true){
+    if (!$("#formOverlay").classList.contains("show")) return;
+    $("#formOverlay").classList.remove("show");
+    if (discard && assets){
+      for (const id of uploadedThisSession){ try { await assets.delete(id); } catch(e){} }
+    }
+    uploadedThisSession = [];
+    editing = null;
+  }
+  $("#cancelBtn").onclick = () => closeForm(true);
+  $("#formOverlay").addEventListener("mousedown", e => { if (e.target.id === "formOverlay") closeForm(true); });
+
+  function renderPreviews(){
+    $("#previews").innerHTML = formImages.map((im, i) => im.pending
+      ? `<div class="pv loading">上傳中…</div>`
+      : `<div class="pv"><img data-asset="${esc(im.id)}" src="${blobUrl(im.id)}" alt=""><button type="button" class="x" data-rm="${i}" aria-label="移除">✕</button></div>`).join("");
+    $("#saveBtn").disabled = pendingUploads > 0;
+    $("#saveBtn").textContent = pendingUploads > 0 ? "圖片上傳中…" : "儲存";
+  }
+  $("#previews").addEventListener("click", async e => {
+    const b = e.target.closest("[data-rm]"); if (!b) return;
+    const [im] = formImages.splice(Number(b.dataset.rm), 1);
+    // 本次剛上傳的圖直接刪除；原有的圖待儲存後再刪
+    if (im && uploadedThisSession.includes(im.id) && assets){
+      uploadedThisSession = uploadedThisSession.filter(x => x !== im.id);
+      try { await assets.delete(im.id); } catch(e){}
+    }
+    renderPreviews();
+  });
+
+  const drop = $("#drop");
+  drop.onclick = () => $("#fFiles").click();
+  drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); handleFiles(e.dataTransfer.files); });
+  $("#fFiles").addEventListener("change", e => { handleFiles(e.target.files); e.target.value = ""; });
+
+  const OK_TYPES = ["image/png","image/jpeg","image/webp","image/gif"];
+  async function prepareImage(file){
+    // 原圖 ≤ 15MB 且格式支援就保留原檔（不壓縮，保留畫質）
+    if (OK_TYPES.includes(file.type) && file.size <= 15 * 1024 * 1024) return file;
+    // 太大或格式不支援（例如 HEIC 在部分瀏覽器可解碼）→ 轉成高品質 JPEG
+    const bmp = await loadBitmap(file);
+    const max = 4000, scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * scale); c.height = Math.round(bmp.height * scale);
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,c.width,c.height);
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    for (const q of [0.92, 0.85, 0.75]){
+      const b = await new Promise(r => c.toBlob(r, "image/jpeg", q));
+      if (b && b.size <= 19 * 1024 * 1024) return b;
+    }
+    throw new Error("too_large");
+  }
+  function loadBitmap(blob){
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(blob), img = new Image();
+      img.onload = () => { URL.revokeObjectURL(url); res(img); };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("decode")); };
+      img.src = url;
+    });
+  }
+
+  async function handleFiles(files){
+    if (!assets){ $("#formErr").textContent = "目前無法上傳圖片。"; return; }
+    for (const file of [...files]){
+      if (!file.type.startsWith("image/") && !/\.(heic|heif)$/i.test(file.name)) continue;
+      const slot = {pending:true}; formImages.push(slot); pendingUploads++; renderPreviews();
+      try {
+        const blob = await prepareImage(file);
+        const type = OK_TYPES.includes(blob.type) ? blob.type : "image/jpeg";
+        let res;
+        try { res = await assets.upload(blob, {type}); }
+        catch(err){ if (err?.code === "store_unavailable"){ await new Promise(r=>setTimeout(r,800)); res = await assets.upload(blob, {type}); } else throw err; }
+        // 剛上傳的圖直接用本機檔案預覽（blob: 網址一定能顯示）
+        urlMap.set(res.id, URL.createObjectURL(blob));
+        slot.pending = false; slot.id = res.id; uploadedThisSession.push(res.id);
+      } catch(err){
+        formImages = formImages.filter(x => x !== slot);
+        const code = err?.code || err?.message;
+        $("#formErr").textContent = code === "too_large" ? `「${file.name}」太大了，請換小一點的檔案。`
+          : code === "quota_or_state" ? "儲存空間已滿，無法再上傳圖片。"
+          : code === "unsupported_type" || code === "decode" ? `「${file.name}」的格式不支援，請改用 PNG／JPG。`
+          : `「${file.name}」上傳失敗，請再試一次。`;
+      } finally { pendingUploads--; renderPreviews(); }
+    }
+  }
+
+  let saving = false;
+  $("#form").addEventListener("submit", async e => {
+    e.preventDefault();
+    if (saving || pendingUploads > 0 || !col) return;
+    const amount = parseFloat($("#fAmount").value);
+    const artist = $("#fArtist").value.trim();
+    const date = $("#fDate").value;
+    if (!date || !artist || !isFinite(amount) || amount < 0){ $("#formErr").textContent = "請填寫日期、金額與繪師。"; return; }
+    const data = {
+      date, amount, currency: $("#fCurrency").value, artist,
+      title: $("#fTitle").value.trim(), notes: $("#fNotes").value.trim(),
+      images: formImages.filter(x => x.id).map(x => x.id),
+      createdAt: editing?.createdAt || Date.now(), updatedAt: Date.now(),
+    };
+    saving = true; $("#saveBtn").disabled = true; $("#saveBtn").textContent = "儲存中…";
+    try {
+      const removed = (editing?.images || []).filter(id => !data.images.includes(id));
+      const isEdit = !!editing;
+      if (editing) await col.doc(editing.id).set(data);
+      else await col.doc().set(data);
+      try { localStorage.setItem("commission.cur", data.currency); } catch(e){}
+      uploadedThisSession = [];
+      await closeForm(false);
+      for (const id of removed){ try { await assets?.delete(id); } catch(e){} }
+      toast(isEdit ? "已更新" : "已新增一筆委託");
+    } catch(err){
+      $("#formErr").textContent = err?.code === "quota_exceeded" ? "紀錄數量已達上限。"
+        : err?.code === "invalid_argument" ? "你沒有編輯這份紀錄的權限。" : "儲存失敗，請再試一次。";
+    } finally { saving = false; renderPreviews(); }
+  });
+
+  // ---------- 刪除 ----------
+  let delTarget = null;
+  function askDelete(rec){
+    if (!rec) return; delTarget = rec;
+    $("#confirmText").textContent = `${rec.date}・${rec.artist}・${fmtAmount(rec.amount, rec.currency)}（含 ${(rec.images||[]).length} 張插圖，刪除後無法復原）`;
+    $("#confirmOverlay").classList.add("show");
+  }
+  $("#confirmNo").onclick = () => $("#confirmOverlay").classList.remove("show");
+  $("#confirmYes").onclick = async () => {
+    const rec = delTarget; if (!rec) return;
+    $("#confirmYes").disabled = true;
+    try {
+      await col.doc(rec.id).delete();
+      for (const id of rec.images || []){ try { await assets?.delete(id); } catch(e){} }
+      toast("已刪除");
+    } catch(e){ toast("刪除失敗，請再試一次"); }
+    $("#confirmYes").disabled = false; $("#confirmOverlay").classList.remove("show"); delTarget = null;
+  };
+
+  // ---------- 匯出 ----------
+  // 檔案準備好後，讓使用者親手點「分享／儲存」（iOS 需要使用者點擊才能開分享選單）
+  const MIME = {csv:"text/csv", json:"application/json", html:"text/html", pdf:"application/pdf", jpg:"image/jpeg"};
+  function save(filename, data){
+    const ext = filename.split(".").pop().toLowerCase();
+    const type = MIME[ext] || "application/octet-stream";
+    const blob = new Blob([data], {type});
+    let file = null; try { file = new File([blob], filename, {type}); } catch(_){}
+    const canShare = !!(file && navigator.canShare && navigator.share && (() => { try { return navigator.canShare({files:[file]}); } catch(_){ return false; } })());
+    const url = URL.createObjectURL(blob);
+    const box = $("#saveReady"), shareBtn = $("#saveShare"), dl = $("#saveDl"), cancel = $("#saveCancel");
+    const mb = blob.size / 1048576;
+    $("#saveName").innerHTML = `✅ 已準備好：${esc(filename)} <small>（${mb >= 1 ? mb.toFixed(1) + " MB" : Math.max(1, Math.round(blob.size/1024)) + " KB"}）</small>`;
+    shareBtn.hidden = !canShare;
+    dl.href = url; dl.download = filename;
+    dl.className = canShare ? "btn" : "btn primary";
+    box.hidden = false;
+    setTimeout(() => box.scrollIntoView({behavior:"smooth", block:"center"}), 50);
+    return new Promise(resolve => {
+      const done = (ok) => {
+        box.hidden = true; shareBtn.onclick = dl.onclick = cancel.onclick = null;
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        resolve(ok);
+      };
+      shareBtn.onclick = async () => {
+        try { await navigator.share({files:[file], title: filename}); done(true); }
+        catch(err){ if (err && err.name === "AbortError") return; toast("無法開啟分享，請改按「下載」"); }
+      };
+      dl.onclick = () => setTimeout(() => done(true), 400);
+      cancel.onclick = () => done(false);
+    });
+  }
+  const stamp = () => today();
+
+  async function exportCsv(){
+    const rs = visibleRecords();
+    const q = v => `"${String(v ?? "").replace(/"/g,'""')}"`;
+    const rows = [["日期","繪師","委託標題","金額","幣別","備註","插圖數"].map(q).join(",")]
+      .concat(rs.map(r => [r.date, r.artist, r.title, r.amount, r.currency, r.notes, (r.images||[]).length].map(q).join(",")));
+    await save(`委託紀錄_${stamp()}.csv`, "﻿" + rows.join("\r\n"));
+  };
+
+  async function imgToDataUrl(id){
+    const resp = await fetch(blobUrl(id), {credentials: "include"}); if (!resp.ok) throw new Error("fetch");
+    const bmp = await loadBitmap(await resp.blob());
+    const max = 1400, s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas"); c.width = Math.round(bmp.width*s); c.height = Math.round(bmp.height*s);
+    const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(bmp,0,0,c.width,c.height);
+    return c.toDataURL("image/jpeg", 0.85);
+  }
+
+  async function exportHtml(progress){
+    const rs = visibleRecords();
+    const btn = { set textContent(t){ progress(t); } };
+    const total = rs.reduce((n,r)=>n+(r.images||[]).length,0); let done = 0;
+    try {
+      const totals = {}; rs.forEach(r => { const c=r.currency||"TWD"; totals[c]=(totals[c]||0)+(Number(r.amount)||0); });
+      let body = "";
+      for (const r of rs){
+        let imgs = "";
+        for (const id of r.images || []){
+          btn.textContent = `整理插圖 ${++done}/${total}…`;
+          try { imgs += `<img src="${await imgToDataUrl(id)}" alt="">`; } catch(e){}
+        }
+        body += `<section><div class="h"><b>${esc(r.artist)}</b><span>${esc(fmtAmount(r.amount, r.currency))}</span></div>
+          <div class="m">${esc(r.date)}${r.title?`・${esc(r.title)}`:""}</div>
+          ${r.notes?`<p>${esc(r.notes)}</p>`:""}${imgs?`<div class="g">${imgs}</div>`:""}</section>`;
+      }
+      const label = {"date-desc":"日期新到舊","date-asc":"日期舊到新","amt-desc":"金額高到低","amt-asc":"金額低到高"}[sortKey];
+      const html = `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>委託紀錄 ${stamp()}</title>
+<style>body{font-family:"Noto Sans TC",system-ui,sans-serif;background:#f6f1e8;color:#2b2622;margin:0;padding:24px;line-height:1.55}
+.w{max-width:860px;margin:0 auto}h1{font-family:"Noto Serif TC",serif;margin:0 0 4px}.s{color:#7c7168;margin:0 0 20px}
+section{background:#fffdf8;border:1px solid #e4dacb;border-radius:14px;padding:14px 16px;margin-bottom:14px;break-inside:avoid}
+.h{display:flex;justify-content:space-between;font-size:17px}.h span{color:#c2553a;font-weight:700}.m{color:#7c7168;font-size:14px}
+p{white-space:pre-wrap;margin:6px 0 0;font-size:14px}.g{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:10px}
+.g img{width:100%;border-radius:8px;display:block}</style></head><body><div class="w">
+<h1>委託紀錄</h1><p class="s">匯出日期 ${stamp()}・共 ${rs.length} 筆・依${label}排列・累計 ${Object.entries(totals).map(([c,v])=>esc(fmtAmount(v,c))).join("／")}</p>
+${body}</div></body></html>`;
+      btn.textContent = "準備下載…";
+      await save(`委託紀錄_${stamp()}.html`, new Blob([html], {type:"text/html"}));
+    } finally {}
+  }
+  // ---------- 匯出：圖片 / PDF（畫在 canvas 上）----------
+  const CW = 1080, PAD = 56, CP = 34, TG = 14;
+  const PDF_H = Math.round(CW * 297 / 210);   // A4 比例
+  const IMG_MAX_H = 8000;                     // 長圖單張高度上限（避免手機記憶體不足）
+  const SANS = '"Noto Sans TC", system-ui, sans-serif', SERIF = '"Noto Serif TC", serif';
+  const PC = {paper:"#f6f1e8", card:"#fffdf8", ink:"#2b2622", muted:"#7c7168", line:"#e4dacb", accent:"#c2553a", soft:"#f6e0d8"};
+  const INNER = CW - PAD*2 - CP*2;
+
+  async function ensureFonts(text){
+    try {
+      await Promise.all([
+        document.fonts.load(`700 36px "Noto Sans TC"`, text), document.fonts.load(`400 26px "Noto Sans TC"`, text),
+        document.fonts.load(`900 36px "Noto Serif TC"`, text)
+      ]);
+    } catch(_){}
+  }
+
+  function tokens(t){ return String(t).match(/[A-Za-z0-9@#&'’\-_.:\/]+|\s|./gu) || []; }
+  function wrap(ctx, text, maxW, maxLines){
+    const out = [];
+    for (const para of String(text||"").split(/\n/)){
+      let line = "";
+      for (const tk of tokens(para)){
+        const test = line + tk;
+        if (ctx.measureText(test).width > maxW && line){
+          out.push(line.trimEnd()); line = tk.trimStart();
+          // 單一超長字串
+          while (ctx.measureText(line).width > maxW && line.length > 1){
+            let i = line.length; while (i > 1 && ctx.measureText(line.slice(0,i)).width > maxW) i--;
+            out.push(line.slice(0,i)); line = line.slice(i);
+          }
+        } else line = test;
+      }
+      out.push(line);
+    }
+    if (maxLines && out.length > maxLines){
+      const cut = out.slice(0, maxLines);
+      let last = cut[maxLines-1];
+      while (last && ctx.measureText(last + "…").width > maxW) last = last.slice(0,-1);
+      cut[maxLines-1] = last + "…";
+      return cut;
+    }
+    return out;
+  }
+  function rr(ctx, x, y, w, h, r){
+    ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+  }
+  function drawCover(ctx, img, x, y, w, h, r){
+    ctx.save(); rr(ctx,x,y,w,h,r); ctx.clip();
+    ctx.fillStyle = PC.soft; ctx.fillRect(x,y,w,h);
+    if (img){
+      const s = Math.max(w/img.width, h/img.height), sw = w/s, sh = h/s;
+      ctx.drawImage(img, (img.width-sw)/2, (img.height-sh)/2, sw, sh, x, y, w, h);
+    }
+    ctx.restore();
+  }
+
+  async function loadForExport(id){
+    const r = await fetch(blobUrl(id), {credentials:"include"}); if (!r.ok) throw 0;
+    const im = await loadBitmap(await r.blob());
+    const max = 1100, s = Math.min(1, max / Math.max(im.width, im.height));
+    const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(im.width*s)); c.height = Math.max(1, Math.round(im.height*s));
+    c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  // 排出每一筆的版面（先量高度）
+  function layoutRecord(ctx, r, bmps, pageMaxH){
+    const L = {r, parts:[]};
+    let h = CP;
+    ctx.font = `700 36px ${SANS}`;
+    ctx.font = `900 36px ${SERIF}`; const amtStr = fmtAmount(r.amount, r.currency); const amtW = ctx.measureText(amtStr).width;
+    ctx.font = `700 36px ${SANS}`;
+    const artist = wrap(ctx, r.artist, INNER - amtW - 24, 1)[0];
+    L.parts.push({k:"head", y:h, artist, amtStr}); h += 50;
+    ctx.font = `400 26px ${SANS}`;
+    L.parts.push({k:"meta", y:h, text:r.date}); h += 42;
+    if (r.title){ ctx.font = `500 28px ${SANS}`; const ls = wrap(ctx, r.title, INNER, 2); L.parts.push({k:"lines", y:h, lines:ls, font:`500 28px ${SANS}`, color:PC.ink, lh:42}); h += ls.length*42; }
+    if (r.notes){ ctx.font = `400 25px ${SANS}`; const ls = wrap(ctx, r.notes, INNER, 4); h += 4; L.parts.push({k:"lines", y:h, lines:ls, font:`400 25px ${SANS}`, color:PC.muted, lh:38}); h += ls.length*38; }
+    const n = bmps.length;
+    if (n){
+      h += 18;
+      const budget = pageMaxH - PAD*2 - h - CP - 10;  // 一張卡片必須放得進一頁
+      if (n === 1){
+        const b = bmps[0];
+        const ih = Math.max(200, Math.min(INNER * (b ? b.height/b.width : 0.75), 1000, budget));
+        L.parts.push({k:"imgs", y:h, cells:[{img:b, x:0, y:0, w:INNER, h:ih}]}); h += ih;
+      } else {
+        const cols = n === 2 || n === 4 ? 2 : 3;
+        const s = (INNER - (cols-1)*TG) / cols;
+        let rows = Math.ceil(n / cols);
+        const maxRows = Math.max(1, Math.floor((budget + TG) / (s + TG)));
+        let more = 0;
+        if (rows > maxRows){ rows = maxRows; more = n - (rows*cols - 1); }
+        const shown = more ? rows*cols : n;
+        const cells = [];
+        for (let i = 0; i < shown; i++){
+          cells.push({img:bmps[i], x:(i%cols)*(s+TG), y:Math.floor(i/cols)*(s+TG), w:s, h:s, more: (more && i === shown-1) ? more + 1 : 0});
+        }
+        L.parts.push({k:"imgs", y:h, cells}); h += rows*s + (rows-1)*TG;
+      }
+    }
+    L.h = h + CP;
+    return L;
+  }
+
+  function drawRecord(ctx, L, y0){
+    const x0 = PAD;
+    ctx.save();
+    ctx.shadowColor = "rgba(60,40,20,.08)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 4;
+    rr(ctx, x0, y0, CW-PAD*2, L.h, 22); ctx.fillStyle = PC.card; ctx.fill();
+    ctx.restore();
+    rr(ctx, x0, y0, CW-PAD*2, L.h, 22); ctx.strokeStyle = PC.line; ctx.lineWidth = 2; ctx.stroke();
+    const ix = x0 + CP;
+    ctx.textBaseline = "top";
+    for (const p of L.parts){
+      const y = y0 + p.y;
+      if (p.k === "head"){
+        ctx.fillStyle = PC.ink; ctx.font = `700 36px ${SANS}`; ctx.textAlign = "left"; ctx.fillText(p.artist, ix, y);
+        ctx.fillStyle = PC.accent; ctx.font = `900 36px ${SERIF}`; ctx.textAlign = "right"; ctx.fillText(p.amtStr, ix + INNER, y);
+        ctx.textAlign = "left";
+      } else if (p.k === "meta"){
+        ctx.fillStyle = PC.muted; ctx.font = `400 26px ${SANS}`; ctx.fillText(p.text, ix, y);
+      } else if (p.k === "lines"){
+        ctx.fillStyle = p.color; ctx.font = p.font; p.lines.forEach((ln,i) => ctx.fillText(ln, ix, y + i*p.lh));
+      } else if (p.k === "imgs"){
+        for (const c of p.cells){
+          drawCover(ctx, c.img, ix + c.x, y + c.y, c.w, c.h, 14);
+          if (c.more){
+            ctx.save(); rr(ctx, ix+c.x, y+c.y, c.w, c.h, 14); ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fill();
+            ctx.fillStyle = "#fff"; ctx.font = `700 44px ${SANS}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+            ctx.fillText(`+${c.more}`, ix + c.x + c.w/2, y + c.y + c.h/2); ctx.restore(); ctx.textBaseline = "top";
+          }
+        }
+      }
+    }
+  }
+
+  function headerBlock(ctx, rs){
+    const totals = {}; rs.forEach(r => { const c=r.currency||"TWD"; totals[c]=(totals[c]||0)+(Number(r.amount)||0); });
+    const label = {"date-desc":"日期新到舊","date-asc":"日期舊到新","amt-desc":"金額高到低","amt-asc":"金額低到高"}[sortKey];
+    const artistF = $("#artistFilter").value;
+    ctx.font = `400 26px ${SANS}`;
+    const sub = wrap(ctx, `匯出日期 ${today()}・共 ${rs.length} 筆・依${label}排列${artistF ? `・繪師：${artistF}` : ""}`, CW-PAD*2, 2);
+    ctx.font = `900 40px ${SERIF}`;
+    const tot = wrap(ctx, "累計 " + Object.entries(totals).sort((a,b)=>b[1]-a[1]).map(([c,v])=>fmtAmount(v,c)).join("／"), CW-PAD*2, 3);
+    return { h: 84 + sub.length*40 + 12 + tot.length*54 + 24, draw(ctx, y){
+      ctx.textBaseline = "top"; ctx.textAlign = "left";
+      ctx.fillStyle = PC.ink; ctx.font = `900 64px ${SERIF}`; ctx.fillText("委託紀錄", PAD, y); y += 84;
+      ctx.fillStyle = PC.muted; ctx.font = `400 26px ${SANS}`; sub.forEach(l => { ctx.fillText(l, PAD, y); y += 40; }); y += 12;
+      ctx.fillStyle = PC.accent; ctx.font = `900 40px ${SERIF}`; tot.forEach(l => { ctx.fillText(l, PAD, y); y += 54; });
+    }};
+  }
+
+  // 產生頁面（每頁一個 canvas）
+  async function renderPages(mode, withImages, progress){
+    const rs = visibleRecords();
+    await ensureFonts("委託紀錄匯出日期共筆依排列繪師累計…+／0123456789" + rs.map(r => [r.artist,r.title,r.notes,r.date,fmtAmount(r.amount,r.currency)].join("")).join(""));
+    const pageMaxH = mode === "pdf" ? PDF_H : IMG_MAX_H;
+    const total = withImages ? rs.reduce((n,r)=>n+(r.images||[]).length,0) : 0; let done = 0;
+    const meas = document.createElement("canvas").getContext("2d");
+    const blocks = [];
+    for (const r of rs){
+      const bmps = [];
+      if (withImages) for (const id of r.images || []){
+        progress(`整理插圖 ${++done}/${total}…`);
+        try { bmps.push(await loadForExport(id)); } catch(_){ bmps.push(null); }
+      }
+      blocks.push(layoutRecord(meas, r, bmps, pageMaxH));
+    }
+    progress("排版中…");
+    const head = headerBlock(meas, rs);
+    const GAP = 26, FOOT = mode === "pdf" ? 50 : 0;
+    // 分頁
+    const pages = []; let cur = {items:[], h:PAD + head.h, head:true};
+    for (const b of blocks){
+      if (cur.items.length && cur.h + b.h + PAD + FOOT > pageMaxH){ pages.push(cur); cur = {items:[], h:PAD}; }
+      cur.items.push(b); cur.h += b.h + GAP;
+    }
+    pages.push(cur);
+    const canvases = [];
+    pages.forEach((pg, pi) => {
+      const H = mode === "pdf" ? PDF_H : Math.min(IMG_MAX_H, Math.round(pg.h - GAP + PAD + 40));
+      const c = document.createElement("canvas"); c.width = CW; c.height = H;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = PC.paper; ctx.fillRect(0,0,CW,H);
+      let y = PAD;
+      if (pg.head){ head.draw(ctx, y); y += head.h; }
+      for (const b of pg.items){ drawRecord(ctx, b, y); y += b.h + GAP; }
+      ctx.fillStyle = PC.muted; ctx.font = `400 22px ${SANS}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      ctx.fillText(pages.length > 1 ? `委託紀錄簿・${pi+1} / ${pages.length}` : "委託紀錄簿", CW/2, H - 26);
+      ctx.textAlign = "left";
+      canvases.push(c);
+    });
+    return canvases;
+  }
+
+  const toJpeg = (c, q = 0.9) => new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error("encode")), "image/jpeg", q));
+
+  // 手寫最小 PDF（每頁一張 JPEG）
+  async function buildPdf(canvases){
+    const enc = new TextEncoder(), chunks = [], offs = []; let len = 0;
+    const push = (x) => { const u = typeof x === "string" ? enc.encode(x) : x; chunks.push(u); len += u.length; };
+    const obj = (n, body) => { offs[n] = len; push(`${n} 0 obj\n`); body(); push(`\nendobj\n`); };
+    const PW = 595.28, PH = 841.89, n = canvases.length;
+    push("%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+    const kids = []; for (let i = 0; i < n; i++) kids.push(`${3 + i*3} 0 R`);
+    obj(1, () => push("<< /Type /Catalog /Pages 2 0 R >>"));
+    obj(2, () => push(`<< /Type /Pages /Kids [${kids.join(" ")}] /Count ${n} >>`));
+    for (let i = 0; i < n; i++){
+      const c = canvases[i], jpg = new Uint8Array(await (await toJpeg(c, 0.88)).arrayBuffer());
+      const p = 3 + i*3;
+      const content = `q ${PW} 0 0 ${PH} 0 0 cm /Im0 Do Q`;
+      obj(p, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /XObject << /Im0 ${p+2} 0 R >> >> /Contents ${p+1} 0 R >>`));
+      obj(p+1, () => { push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`); });
+      obj(p+2, () => { push(`<< /Type /XObject /Subtype /Image /Width ${c.width} /Height ${c.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`); push(jpg); push("\nendstream"); });
+    }
+    const xref = len, total = 3 + n*3;
+    let x = `xref\n0 ${total}\n0000000000 65535 f \n`;
+    for (let i = 1; i < total; i++) x += String(offs[i]).padStart(10,"0") + " 00000 n \n";
+    push(x + `trailer\n<< /Size ${total} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+    return new Blob(chunks, {type:"application/pdf"});
+  }
+
+  async function exportImage(progress){
+    const pages = await renderPages("img", $("#expWithImg").checked, progress);
+    for (let i = 0; i < pages.length; i++){
+      progress(pages.length > 1 ? `第 ${i+1}/${pages.length} 張已準備好` : "");
+      const b = await toJpeg(pages[i], 0.9);
+      const name = pages.length > 1 ? `委託紀錄_${today()}_${i+1}.jpg` : `委託紀錄_${today()}.jpg`;
+      const ok = await save(name, b);  // 每張圖各自按一次分享／儲存
+      if (!ok) break;
+      pages[i].width = pages[i].height = 0;   // 釋放記憶體
+    }
+  }
+  async function exportPdf(progress){
+    const pages = await renderPages("pdf", $("#expWithImg").checked, progress);
+    progress("產生 PDF…");
+    const pdf = await buildPdf(pages);
+    pages.forEach(c => c.width = c.height = 0);
+    progress("");
+    await save(`委託紀錄_${today()}.pdf`, pdf);
+  }
+
+  // ---------- 備份 / 還原 ----------
+  function blobToB64(blob){
+    return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1] || ""); fr.onerror = rej; fr.readAsDataURL(blob); });
+  }
+  function b64ToBlob(b64, type){
+    const bin = atob(b64), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new Blob([u], {type});
+  }
+  function lastBackupText(){
+    try { const t = localStorage.getItem("commission.lastBackup"); return t ? `這台裝置上次備份：${t}` : "這台裝置還沒有下載過備份"; } catch(_){ return ""; }
+  }
+
+  async function exportBackup(progress){
+    const all = [...records].sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    const total = all.reduce((n,r)=>n+(r.images||[]).length,0); let done = 0, failed = 0;
+    const parts = [`{"app":"commission-log","version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"count":${all.length},"records":[`];
+    for (let i = 0; i < all.length; i++){
+      const {id, images, ...data} = all[i];
+      const imgs = [];
+      for (const aid of images || []){
+        progress(`打包插圖 ${++done}/${total}…`);
+        try {
+          const r = await fetch(blobUrl(aid), {credentials:"include"}); if (!r.ok) throw 0;
+          const b = await r.blob();
+          const type = OK_TYPES.includes(b.type) ? b.type : "image/jpeg";
+          imgs.push({type, data: await blobToB64(b)});
+        } catch(_){ failed++; }
+      }
+      parts.push((i ? "," : "") + JSON.stringify({id, ...data, images: imgs}));
+    }
+    parts.push("]}");
+    progress("");
+    const ok = await save(`委託紀錄_備份_${today()}.json`, new Blob(parts, {type:"application/json"}));
+    if (ok){
+      try { localStorage.setItem("commission.lastBackup", today()); } catch(_){}
+      $("#bkLast").textContent = lastBackupText();
+      toast(failed ? `備份完成，但有 ${failed} 張插圖讀取失敗` : `已備份 ${all.length} 筆紀錄`);
+    }
+  }
+
+  let pendingRestore = null;
+  $("#bkRestoreBtn").onclick = () => { if (!exporting) $("#bkFile").click(); };
+  $("#bkFile").addEventListener("change", async e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    setProg("讀取備份檔…");
+    try {
+      const j = JSON.parse(await f.text());
+      if (j?.app !== "commission-log" || !Array.isArray(j.records)) throw new Error("format");
+      const have = new Set(records.map(r => r.id));
+      const fresh = j.records.filter(r => r && r.id && !have.has(String(r.id)));
+      pendingRestore = fresh;
+      const when = j.exportedAt ? new Date(j.exportedAt).toLocaleString("zh-TW") : "未知";
+      $("#bkInfo").innerHTML = fresh.length
+        ? `備份時間：${esc(when)}<br>備份檔共 ${j.records.length} 筆，其中 <b>${fresh.length} 筆</b>目前清單裡沒有，會被加回來（已存在的不會重複新增，也不會被覆蓋）。`
+        : `備份時間：${esc(when)}<br>備份檔裡的 ${j.records.length} 筆紀錄目前都已在清單中，不需要還原。`;
+      $("#bkGo").hidden = !fresh.length;
+      $("#bkConfirm").hidden = false;
+      setProg("");
+      $("#bkConfirm").scrollIntoView({behavior:"smooth", block:"center"});
+    } catch(err){
+      pendingRestore = null; $("#bkConfirm").hidden = true;
+      setProg("這不是委託紀錄簿的備份檔，或檔案已損壞。");
+    }
+  });
+  $("#bkCancel").onclick = () => { pendingRestore = null; $("#bkConfirm").hidden = true; };
+  $("#bkGo").onclick = async () => {
+    if (!pendingRestore || exporting || !col) return;
+    exporting = true; $("#bkGo").disabled = true; $("#bkCancel").disabled = true;
+    const list = pendingRestore; let ok = 0, imgFail = 0;
+    const total = list.reduce((n,r)=>n+(r.images||[]).length,0); let done = 0;
+    try {
+      for (const r of list){
+        const {id, images, ...data} = r;
+        const ids = [];
+        for (const im of images || []){
+          setProg(`還原插圖 ${++done}/${total}…`);
+          try {
+            const type = OK_TYPES.includes(im.type) ? im.type : "image/jpeg";
+            const res = await assets.upload(b64ToBlob(im.data, type), {type});
+            ids.push(res.id);
+          } catch(_){ imgFail++; }
+        }
+        setProg(`寫入紀錄 ${ok+1}/${list.length}…`);
+        const clean = {
+          date: String(data.date || ""), amount: Number(data.amount) || 0, currency: String(data.currency || "TWD"),
+          artist: String(data.artist || ""), title: String(data.title || ""), notes: String(data.notes || ""),
+          images: ids, createdAt: Number(data.createdAt) || Date.now(), updatedAt: Date.now(),
+        };
+        await col.doc(String(id)).set(clean);
+        ok++;
+      }
+      setProg("");
+      toast(imgFail ? `已還原 ${ok} 筆，有 ${imgFail} 張插圖失敗` : `已還原 ${ok} 筆紀錄`, 3500);
+      $("#bkConfirm").hidden = true; pendingRestore = null;
+    } catch(err){
+      setProg(err?.code === "quota_exceeded" ? `儲存空間已滿，已還原 ${ok} 筆。` : `還原中斷，已還原 ${ok} 筆。可再選一次同一個備份檔繼續（已還原的會自動略過）。`);
+    } finally { exporting = false; $("#bkGo").disabled = false; $("#bkCancel").disabled = false; }
+  };
+
+  // 匯出面板
+  let exporting = false;
+  const setProg = (t) => { $("#expProgress").textContent = t || ""; };
+  $("#exportBtn").onclick = () => {
+    const n = visibleRecords().length;
+    $("#expSub").textContent = n ? `會依目前的排序與篩選匯出 ${n} 筆紀錄` : "目前沒有可匯出的紀錄";
+    $("#expOpts").querySelectorAll("button").forEach(b => b.disabled = !n);
+    $("#expOpts").closest(".modal").querySelector('[data-exp="backup"]').disabled = !records.length;
+    $("#bkRestoreBtn").hidden = !canWrite;
+    $("#bkLast").textContent = lastBackupText();
+    $("#bkConfirm").hidden = true; pendingRestore = null; $("#saveReady").hidden = true;
+    setProg(""); $("#expOverlay").classList.add("show");
+  };
+  $("#expClose").onclick = () => { if (!exporting) $("#expOverlay").classList.remove("show"); };
+  $("#expOverlay").addEventListener("mousedown", e => { if (e.target.id === "expOverlay" && !exporting) $("#expOverlay").classList.remove("show"); });
+  $("#expOverlay").addEventListener("click", async e => {
+    const b = e.target.closest("button[data-exp]"); if (!b || exporting) return;
+    exporting = true; const btns = $("#expOverlay").querySelectorAll("button[data-exp]"); btns.forEach(x => x.disabled = true);
+    try {
+      const k = b.dataset.exp;
+      if (k === "csv") await exportCsv();
+      else if (k === "html") await exportHtml(setProg);
+      else if (k === "img") await exportImage(setProg);
+      else if (k === "pdf") await exportPdf(setProg);
+      else if (k === "backup") await exportBackup(setProg);
+      setProg("");
+    } catch(err){ console.error(err); setProg("匯出失敗，請再試一次（插圖很多時可取消勾選「包含插圖」）"); }
+    finally { exporting = false; btns.forEach(x => x.disabled = false); }
+  });
+
+  // ---------- 啟動（本機儲存版：資料只存在使用者自己的瀏覽器）----------
+  $("#addBtn").onclick = () => openForm(null);
+  render();
+
+  const genId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  let idb = null;
+  const mem = new Map();       // id -> record（含 id）
+  const memImg = new Map();    // id -> Blob（IndexedDB 無法使用時的暫存）
+  const listeners = [];
+
+  function openIDB(){
+    return new Promise((res, rej) => {
+      let rq;
+      try { rq = indexedDB.open("commission-log-local", 1); } catch(e){ return rej(e); }
+      rq.onupgradeneeded = () => { const d = rq.result; d.createObjectStore("records", {keyPath:"id"}); d.createObjectStore("images"); };
+      rq.onsuccess = () => res(rq.result);
+      rq.onerror = () => rej(rq.error);
+      rq.onblocked = () => rej(new Error("blocked"));
+    });
+  }
+  function tx(store, mode, fn){
+    return new Promise((res, rej) => {
+      const t = idb.transaction(store, mode), s = t.objectStore(store), r = fn(s);
+      t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
+    });
+  }
+  function emit(){
+    const snap = { docs: [...mem.values()].map(d => { const {id, ...x} = d; return {id, exists:true, data:() => x}; }), metadata:{fromCache:false} };
+    listeners.forEach(f => f(snap));
+  }
+
+  col = {
+    doc(id){
+      id = id || genId();
+      return {
+        id,
+        async set(data){
+          const rec = {...data, id};
+          if (idb) await tx("records", "readwrite", s => s.put(rec));
+          mem.set(id, rec); emit();
+        },
+        async delete(){
+          if (idb) await tx("records", "readwrite", s => s.delete(id));
+          mem.delete(id); emit();
+        }
+      };
+    },
+    onSnapshot(f){ listeners.push(f); emit(); return () => {}; }
+  };
+
+  assets = {
+    async upload(blob, opts = {}){
+      const type = opts.type || blob.type || "image/jpeg";
+      const b = blob.type === type ? blob : new Blob([blob], {type});
+      const id = genId();
+      if (idb) await tx("images", "readwrite", s => s.put(b, id)); else memImg.set(id, b);
+      return {id, url: URL.createObjectURL(b)};
+    },
+    async delete(id){
+      if (idb) await tx("images", "readwrite", s => s.delete(id)); memImg.delete(id);
+      const u = urlMap.get(id); if (u && u.startsWith("blob:")) URL.revokeObjectURL(u);
+      urlMap.delete(id);
+      return {deleted:true};
+    },
+    async list(){ return {assets:[]}; }
+  };
+
+  function backupReminder(){
+    if (!records.length) return setNotice("");
+    let last = null; try { last = localStorage.getItem("commission.lastBackup"); } catch(_){}
+    const days = last ? (Date.now() - new Date(last).getTime()) / 864e5 : Infinity;
+    if (days >= 14){
+      setNotice(`${last ? `距離上次備份已經 ${Math.floor(days)} 天` : "你還沒有下載過備份"}。資料只存在這台裝置，建議現在備份一次。 <button class="btn sm primary" id="remindBackup" style="margin-left:6px">立即備份</button>`);
+      const b = $("#remindBackup"); if (b) b.onclick = () => $("#exportBtn").click();
+    } else setNotice("");
+  }
+
+  (async () => {
+    canWrite = true;
+    $("#addBtn").hidden = false;
+    try {
+      idb = await openIDB();
+      const recs = await tx("records", "readonly", s => s.getAll());
+      (recs || []).forEach(r => mem.set(r.id, r));
+      await new Promise((res, rej) => {
+        const t = idb.transaction("images", "readonly"), rq = t.objectStore("images").openCursor();
+        rq.onsuccess = () => { const c = rq.result; if (!c) return; urlMap.set(String(c.key), URL.createObjectURL(c.value)); c.continue(); };
+        t.oncomplete = res; t.onerror = () => rej(t.error);
+      });
+      try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(_){}
+    } catch(err){
+      idb = null;
+      $("#localNote").innerHTML = "⚠️ 這個瀏覽器不允許網頁保存資料，<b>關閉頁面後紀錄就會消失</b>。請在離開前下載備份，下次再從備份檔還原。";
+    }
+    // 紀錄更新時也檢查備份提醒
+    listeners.push(() => setTimeout(backupReminder, 0));
+    col.onSnapshot(snap => {
+      records = snap.docs.map(x => ({id: x.id, ...x.data()}));
+      loaded = true; render();
+    });
+
+  })();
+
+  // 離線使用
+  if ("serviceWorker" in navigator && location.protocol === "https:"){
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+  }
+})();
+</script>
+</body>
+</html>
