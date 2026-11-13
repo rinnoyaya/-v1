@@ -1,12 +1,18 @@
 // 委託紀錄簿：離線快取。只快取 App 本身的檔案，你的紀錄不會經過這裡。
-const VERSION = "v6";
+// 更新 App 時，把下面的版本號改掉（例如 v8），已安裝的人下次打開就會換成新版。
+const VERSION = "v9";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
+  // cache: "reload" → 安裝時一定從網路拿最新檔案，不用瀏覽器暫存的舊檔
+  e.waitUntil(caches.open(VERSION)
+    .then(c => c.addAll(CORE.map(u => new Request(u, {cache: "reload"}))))
+    .then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== "fonts").map(k => caches.delete(k)))).then(() => self.clients.claim()));
+  e.waitUntil(caches.keys()
+    .then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== "fonts").map(k => caches.delete(k))))
+    .then(() => self.clients.claim()));
 });
 self.addEventListener("fetch", e => {
   const req = e.request;
@@ -22,11 +28,13 @@ self.addEventListener("fetch", e => {
     return;
   }
   if (url.origin !== location.origin) return;
-  // 頁面：先試網路（拿到最新版），離線時用快取
+  // 頁面：有網路就一定拿最新版（不用瀏覽器暫存），離線時才用快取
   if (req.mode === "navigate"){
-    e.respondWith(fetch(req).then(r => { const cp = r.clone(); caches.open(VERSION).then(c => c.put("./index.html", cp)); return r; })
+    e.respondWith(fetch(req.url, {cache: "no-store"})
+      .then(r => { if (r.ok){ const cp = r.clone(); caches.open(VERSION).then(c => c.put("./index.html", cp)); } return r; })
       .catch(() => caches.match("./index.html")));
     return;
   }
+  // 其他檔案（圖示等）：先用快取
   e.respondWith(caches.match(req).then(hit => hit || fetch(req)));
 });
