@@ -101,6 +101,12 @@
   .title{font-size:14px}
   .notes{color:var(--muted);font-size:13px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
   .card .acts{display:flex;gap:6px;margin-top:auto;padding-top:8px}
+  .card .acts .share-btn{margin-left:auto}
+  .share-preview{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:8px;max-height:46vh;overflow-y:auto;text-align:center;margin-bottom:10px}
+  .share-preview img{width:100%;height:auto;display:block;border-radius:8px}
+  .share-preview .ph{padding:40px 0;color:var(--muted);font-size:14px}
+  .share-toggles{display:flex;gap:16px;flex-wrap:wrap;margin:0 2px 12px}
+  .share-toggles .chk{margin:0}
 
   .empty-state{text-align:center;padding:60px 20px;color:var(--muted);background:var(--card);border:1px dashed var(--line);border-radius:var(--radius)}
   .empty-state b{display:block;font-family:"Noto Serif TC",serif;font-size:20px;color:var(--ink);margin-bottom:6px}
@@ -249,6 +255,24 @@
     <div id="fxRows"></div>
     <div class="err" id="fxErr"></div>
     <div class="foot"><button class="btn" id="fxCancel" type="button">取消</button><button class="btn primary" id="fxSave" type="button">儲存</button></div>
+  </div>
+</div>
+
+<!-- 分享單筆委託 -->
+<div class="overlay" id="shareOverlay">
+  <div class="modal">
+    <h2>分享這筆委託</h2>
+    <div class="share-preview" id="sharePreview"><div class="ph">準備預覽中…</div></div>
+    <div class="share-toggles">
+      <label class="chk"><input type="checkbox" id="shAmount"> 顯示金額</label>
+      <label class="chk"><input type="checkbox" id="shNotes"> 顯示備註</label>
+    </div>
+    <div class="opts">
+      <button type="button" data-share="card"><b id="shCardLabel">🖼️ 分享卡片圖</b><span>把這筆委託做成一張圖片，可以傳到 LINE、IG、X…</span></button>
+      <button type="button" data-share="orig"><b id="shOrigLabel">🎨 分享原始插圖</b><span id="shOrigDesc">原尺寸的插圖檔案；GIF 會保留動畫</span></button>
+    </div>
+    <div class="prog" id="shareProg"></div>
+    <div class="foot"><button class="btn" id="shareClose" type="button">關閉</button></div>
   </div>
 </div>
 
@@ -488,7 +512,7 @@
           <div class="meta">${esc(r.date)}${isTWD(r) ? "" : `<span class="twd ${twdOf(r) === null ? "miss" : ""}">${esc(twdNote(r))}</span>`}</div>
           ${r.title ? `<div class="title"><span class="artist-label">繪師：</span>${esc(r.artist)}</div>` : ""}
           ${r.notes ? `<div class="notes">${esc(r.notes)}</div>` : ""}
-          ${canWrite ? `<div class="acts"><button class="btn sm" data-edit="${esc(r.id)}">編輯</button><button class="btn sm danger" data-del="${esc(r.id)}">刪除</button></div>` : ""}
+          ${(canWrite || canShareCards()) ? `<div class="acts">${canWrite ? `<button class="btn sm" data-edit="${esc(r.id)}">編輯</button><button class="btn sm danger" data-del="${esc(r.id)}">刪除</button>` : ""}${canShareCards() ? `<button class="btn sm share-btn" data-share-rec="${esc(r.id)}">↗ 分享</button>` : ""}</div>` : ""}
         </div></article>`;
     }).join("")}</div>`;
   }
@@ -502,6 +526,7 @@
   $("#search").addEventListener("input", render);
 
   $("#list").addEventListener("click", e => {
+    const sh = e.target.closest("[data-share-rec]"); if (sh) return openShare(records.find(r => r.id === sh.dataset.shareRec));
     const v = e.target.closest("[data-view]"); if (v) return openLightbox(v.dataset.view, 0);
     const ed = e.target.closest("[data-edit]"); if (ed) return openForm(records.find(r => r.id === ed.dataset.edit));
     const dl = e.target.closest("[data-del]"); if (dl) return askDelete(records.find(r => r.id === dl.dataset.del));
@@ -948,12 +973,12 @@ ${body}</div></body></html>`;
     const L = {r, parts:[]};
     let h = CP;
     ctx.font = `700 36px ${SANS}`;
-    ctx.font = `900 36px ${SERIF}`; const amtStr = fmtAmount(r.amount, r.currency); const amtW = ctx.measureText(amtStr).width;
+    ctx.font = `900 36px ${SERIF}`; const amtStr = r._hideAmount ? "" : fmtAmount(r.amount, r.currency); const amtW = amtStr ? ctx.measureText(amtStr).width : 0;
     ctx.font = `700 36px ${SANS}`;
     const artist = wrap(ctx, "繪師：" + r.artist, INNER - amtW - 24, 1)[0];
     L.parts.push({k:"head", y:h, artist, amtStr}); h += 50;
     ctx.font = `400 26px ${SANS}`;
-    L.parts.push({k:"meta", y:h, text:r.date, twd: twdNote(r), miss: !isTWD(r) && twdOf(r) === null}); h += 42;
+    L.parts.push({k:"meta", y:h, text:r.date, twd: r._hideAmount ? "" : twdNote(r), miss: !r._hideAmount && !isTWD(r) && twdOf(r) === null}); h += 42;
     if (r.title){ ctx.font = `500 28px ${SANS}`; const ls = wrap(ctx, r.title, INNER, 2); L.parts.push({k:"lines", y:h, lines:ls, font:`500 28px ${SANS}`, color:PC.ink, lh:42}); h += ls.length*42; }
     if (r.notes){ ctx.font = `400 25px ${SANS}`; const ls = wrap(ctx, r.notes, INNER, 4); h += 4; L.parts.push({k:"lines", y:h, lines:ls, font:`400 25px ${SANS}`, color:PC.muted, lh:38}); h += ls.length*38; }
     const n = bmps.length;
@@ -1163,6 +1188,105 @@ ${body}</div></body></html>`;
       $("#multiCancel").onclick = () => done(null);
     });
   }
+
+  // ---------- 分享單筆委託 ----------
+  function canShareCards(){ return IS_APP || !!downloads; }
+  const EXT = {"image/gif":"gif","image/png":"png","image/webp":"webp","image/jpeg":"jpg"};
+  let shareRec = null, shareBmps = null, shareCardFile = null, shareOrigFiles = null, shareBusy = false, shareToken = 0;
+  const safeName = (t) => String(t || "").replace(/[\\/:*?"<>|\s]+/g, "_").slice(0, 40) || "委託";
+
+  async function renderShareCard(r, opts){
+    await ensureFonts("繪師：委託紀錄簿 by 懧雃…" + [r.artist, r.title, r.notes, r.date, fmtAmount(r.amount, r.currency), twdNote(r)].join(""));
+    const meas = document.createElement("canvas").getContext("2d");
+    const rr = {...r, notes: opts.notes ? r.notes : "", _hideAmount: !opts.amount};
+    const L = layoutRecord(meas, rr, shareBmps, IMG_MAX_H);
+    const H = PAD + L.h + 84;
+    const c = document.createElement("canvas"); c.width = CW; c.height = H;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = PC.paper; ctx.fillRect(0, 0, CW, H);
+    drawRecord(ctx, L, PAD);
+    ctx.fillStyle = PC.muted; ctx.font = `400 22px ${SANS}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    ctx.fillText("委託紀錄簿 by 懧雃", CW/2, H - 28); ctx.textAlign = "left";
+    return c;
+  }
+  async function refreshSharePreview(){
+    if (!shareRec || !shareBmps) return;
+    const my = ++shareToken;
+    const c = await renderShareCard(shareRec, {amount: $("#shAmount").checked, notes: $("#shNotes").checked});
+    const blob = await toJpeg(c, 0.92); c.width = c.height = 0;
+    if (my !== shareToken) return;
+    shareCardFile = {name: `委託_${safeName(shareRec.title || shareRec.artist)}_${shareRec.date}.jpg`, blob};
+    const box = $("#sharePreview"), old = box.querySelector("img");
+    if (old && old.src.startsWith("blob:")) URL.revokeObjectURL(old.src);
+    box.innerHTML = `<img alt="分享預覽" src="${URL.createObjectURL(blob)}">`;
+    $("#shareOverlay").querySelector('[data-share="card"]').disabled = false;
+  }
+  async function openShare(r){
+    if (!r) return;
+    shareRec = r; shareBmps = null; shareCardFile = null; shareOrigFiles = null;
+    $("#sharePreview").innerHTML = `<div class="ph">準備預覽中…</div>`;
+    $("#shareProg").textContent = "";
+    const imgs = r.images || [];
+    const optCard = $("#shareOverlay").querySelector('[data-share="card"]'), optOrig = $("#shareOverlay").querySelector('[data-share="orig"]');
+    optCard.disabled = true; optOrig.disabled = true; optOrig.hidden = !imgs.length;
+    $("#shCardLabel").textContent = IS_APP ? "📤 分享卡片圖" : "⬇ 儲存卡片圖";
+    $("#shOrigLabel").textContent = IS_APP ? "📤 分享原始插圖" : "⬇ 儲存原始插圖";
+    $("#shOrigDesc").textContent = `${imgs.length} 張原尺寸插圖${imgs.length > 1 && !IS_APP ? "（會包成一個 ZIP）" : ""}；GIF 會保留動畫`;
+    $("#shareOverlay").classList.add("show");
+    // 先準備好檔案，按下分享時才能立刻打開手機的分享選單
+    shareBmps = [];
+    for (const id of imgs){ try { shareBmps.push(await loadForExport(id)); } catch(_){ shareBmps.push(null); } }
+    if (shareRec !== r) return;
+    await refreshSharePreview();
+    if (imgs.length){
+      const files = [];
+      for (let i = 0; i < imgs.length; i++){
+        try {
+          const b = await readImage(imgs[i]);
+          const ext = EXT[b.type] || ((r.gifs || []).includes(imgs[i]) ? "gif" : "jpg");
+          files.push({name: `${safeName(r.title || r.artist)}_${r.date}${imgs.length > 1 ? "_" + (i+1) : ""}.${ext}`, blob: b});
+        } catch(_){}
+      }
+      if (shareRec !== r) return;
+      shareOrigFiles = files;
+      optOrig.disabled = !files.length;
+    }
+  }
+  $("#shAmount").addEventListener("change", refreshSharePreview);
+  $("#shNotes").addEventListener("change", refreshSharePreview);
+  $("#shareClose").onclick = () => { if (!shareBusy) { $("#shareOverlay").classList.remove("show"); shareRec = null; } };
+  $("#shareOverlay").addEventListener("mousedown", e => { if (e.target.id === "shareOverlay" && !shareBusy) { $("#shareOverlay").classList.remove("show"); shareRec = null; } });
+
+  async function deliverFiles(files, zipName){
+    if (IS_APP){
+      const fs = files.map(f => new File([f.blob], f.name, {type: f.blob.type || "image/jpeg"}));
+      let can = false; try { can = !!(navigator.canShare && navigator.share && navigator.canShare({files: fs})); } catch(_){}
+      if (can){
+        try { await navigator.share({files: fs}); return true; }
+        catch(err){ if (err && err.name === "AbortError") return false; }
+      }
+      // 不支援分享選單時：改成下載
+      const blob = files.length > 1 ? await makeZip(files) : files[0].blob;
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = files.length > 1 ? zipName : files[0].name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      return true;
+    }
+    if (files.length === 1) return save(files[0].name, files[0].blob);
+    $("#shareProg").textContent = "打包中…";
+    const zip = await makeZip(files); $("#shareProg").textContent = "";
+    return save(zipName, zip);
+  }
+  $("#shareOverlay").addEventListener("click", async e => {
+    const b = e.target.closest("button[data-share]"); if (!b || b.disabled || shareBusy || !shareRec) return;
+    const files = b.dataset.share === "card" ? (shareCardFile ? [shareCardFile] : []) : (shareOrigFiles || []);
+    if (!files.length) return;
+    shareBusy = true;
+    try {
+      const ok = await deliverFiles(files, `${safeName(shareRec.title || shareRec.artist)}_${shareRec.date}_插圖.zip`);
+      if (ok) toast(IS_APP ? "已送出" : "已儲存");
+    } catch(_){ toast("分享失敗，請再試一次"); }
+    finally { shareBusy = false; }
+  });
 
   async function exportImage(progress){
     const pages = await renderPages("img", $("#expWithImg").checked, progress);
