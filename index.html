@@ -63,6 +63,10 @@
   .seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
   .seg button{white-space:nowrap;border:0;background:transparent;padding:7px 12px;cursor:pointer;font-size:13.5px}
   .seg button.on{background:var(--ink);color:var(--paper)}
+  .gif-chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:7px 12px;cursor:pointer;font-size:13.5px;white-space:nowrap}
+  .gif-chip span{color:var(--muted);font-size:12px}
+  .gif-chip[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .gif-chip[aria-pressed="true"] span{color:var(--paper);opacity:.75}
   .toolbar input[type=search], .toolbar select{border:1px solid var(--line);background:var(--paper);border-radius:999px;padding:7px 12px;min-width:0}
   .toolbar input[type=search]{flex:1 1 160px}
   .toolbar .grow{flex:1}
@@ -211,6 +215,7 @@
       <button data-sort="amt-desc">金額高</button>
       <button data-sort="amt-asc">金額低</button>
     </div>
+    <button type="button" class="gif-chip" id="gifOnly" aria-pressed="false" title="只看有 GIF 動圖的委託">🎞️ GIF <span id="gifCount"></span></button>
     <select id="artistFilter" aria-label="篩選繪師"><option value="">所有繪師</option></select>
     <input type="search" id="search" placeholder="搜尋繪師、標題、備註…">
     <button class="btn sm" id="fxBtn" type="button">💱 匯率</button>
@@ -490,11 +495,40 @@
   }
 
   // ---------- 檢視 ----------
+  // ---- GIF 動圖分類 ----
+  let gifOnly = false;
+  try { gifOnly = localStorage.getItem("commission.gifOnly") === "1"; } catch(_){}
+  const hasGifs = (r) => (r.gifs || []).some(id => (r.images || []).includes(id));
+  // 舊紀錄（還沒有 GIF 標記的）在背景檢查一次，找到 GIF 就補上標記
+  const gifScanned = new Set(); let gifScanRunning = false;
+  async function scanGifs(){
+    if (gifScanRunning) return; gifScanRunning = true;
+    let changed = false;
+    try {
+      for (const r of records.slice()){
+        if (r.gifs !== undefined || gifScanned.has(r.id)) continue;
+        gifScanned.add(r.id);
+        const found = [];
+        for (const id of r.images || []){
+          try {
+            const b = await readImage(id);
+            if (b.type && b.type !== "image/gif") continue;
+            if (await gifFrames(b) > 1) found.push(id);
+          } catch(_){}
+        }
+        const cur = records.find(x => x.id === r.id); if (!cur) continue;
+        if (found.length) changed = true;
+        if (canWrite && col){ const {id, ...data} = cur; try { await col.doc(String(id)).set({...data, gifs: found}); } catch(_){ cur.gifs = found; } }
+        else cur.gifs = found;
+      }
+    } finally { gifScanRunning = false; if (changed) render(); }
+  }
   function visibleRecords(){
     const q = $("#search").value.trim().toLowerCase();
     const a = $("#artistFilter").value;
     let rs = records.filter(r => {
       if (a && r.artist !== a) return false;
+      if (gifOnly && !hasGifs(r)) return false;
       if (!q) return true;
       return [r.artist, r.title, r.notes].some(x => String(x||"").toLowerCase().includes(q));
     });
@@ -540,6 +574,10 @@
   }
 
   function render(){
+    const gc = records.filter(hasGifs).length;
+    $("#gifOnly").setAttribute("aria-pressed", gifOnly ? "true" : "false");
+    $("#gifCount").textContent = `(${gc})`;
+    if (loaded && !gifScanRunning && records.some(r => r.gifs === undefined && !gifScanned.has(r.id))) setTimeout(scanGifs, 300);
     document.querySelectorAll("#sortSeg button").forEach(b => b.classList.toggle("on", b.dataset.sort === sortKey));
     renderArtists();
     const rs = visibleRecords();
@@ -550,11 +588,18 @@
       list.innerHTML = `<div class="empty-state"><b>還沒有任何委託紀錄</b>${canWrite ? "按右上角「＋ 新增委託」記下第一筆吧。" : ""}</div>`;
       return;
     }
-    if (!rs.length){ list.innerHTML = `<div class="empty-state"><b>找不到符合的紀錄</b>試試其他關鍵字或繪師。</div>`; return; }
+    if (!rs.length){
+      list.innerHTML = gifOnly && !records.some(hasGifs)
+        ? `<div class="empty-state"><b>還沒有含 GIF 動圖的委託</b>上傳 GIF 動圖後，那筆委託就會自動出現在這裡。${gifScanRunning ? "<br>（正在檢查舊紀錄裡的 GIF…）" : ""}</div>`
+        : `<div class="empty-state"><b>找不到符合的紀錄</b>試試其他關鍵字或繪師${gifOnly ? "，或關掉「🎞️ GIF」篩選" : ""}。</div>`;
+      return;
+    }
     list.innerHTML = `<div class="grid">${rs.map(r => {
       const imgs = r.images || [];
+      // 只看 GIF 時，封面改用這筆的第一張 GIF
+      const ti = gifOnly ? Math.max(0, imgs.findIndex(id => (r.gifs || []).includes(id))) : 0;
       const thumb = imgs.length
-        ? `<div class="thumbs" data-view="${esc(r.id)}"><img loading="lazy" data-asset="${esc(imgs[0])}" src="${blobUrl(imgs[0])}" alt="${esc(r.artist)} 的插圖">${(r.gifs || []).includes(imgs[0]) ? `<span class="gifbadge">GIF</span>` : ""}${imgs.length>1?`<span class="count">${imgs.length} 張</span>`:""}</div>`
+        ? `<div class="thumbs" data-view="${esc(r.id)}" data-idx="${ti}"><img loading="lazy" data-asset="${esc(imgs[ti])}" src="${blobUrl(imgs[ti])}" alt="${esc(r.artist)} 的插圖">${(r.gifs || []).includes(imgs[ti]) ? `<span class="gifbadge">GIF</span>` : ""}${imgs.length>1?`<span class="count">${imgs.length} 張</span>`:""}</div>`
         : `<div class="thumbs empty">尚無插圖</div>`;
       return `<article class="card">${thumb}
         <div class="body">
@@ -574,10 +619,14 @@
   });
   $("#artistFilter").addEventListener("change", render);
   $("#search").addEventListener("input", render);
+  $("#gifOnly").addEventListener("click", () => {
+    gifOnly = !gifOnly; try { localStorage.setItem("commission.gifOnly", gifOnly ? "1" : "0"); } catch(_){}
+    render();
+  });
 
   $("#list").addEventListener("click", e => {
     const sh = e.target.closest("[data-share-rec]"); if (sh) return openShare(records.find(r => r.id === sh.dataset.shareRec));
-    const v = e.target.closest("[data-view]"); if (v) return openLightbox(v.dataset.view, 0);
+    const v = e.target.closest("[data-view]"); if (v) return openLightbox(v.dataset.view, Number(v.dataset.idx) || 0);
     const ed = e.target.closest("[data-edit]"); if (ed) return openForm(records.find(r => r.id === ed.dataset.edit));
     const dl = e.target.closest("[data-del]"); if (dl) return askDelete(records.find(r => r.id === dl.dataset.del));
   });
@@ -1199,7 +1248,7 @@ ${body}</div></body></html>`;
     const label = {"date-desc":"日期新到舊","date-asc":"日期舊到新","amt-desc":"金額高到低","amt-asc":"金額低到高"}[sortKey];
     const artistF = $("#artistFilter").value;
     ctx.font = `400 26px ${SANS}`;
-    const sub = wrap(ctx, `匯出日期 ${today()}・共 ${rs.length} 筆・依${label}排列${artistF ? `・繪師：${artistF}` : ""}`, CW-PAD*2, 2);
+    const sub = wrap(ctx, `匯出日期 ${today()}・共 ${rs.length} 筆・依${label}排列${artistF ? `・繪師：${artistF}` : ""}${gifOnly ? "・只含 GIF 動圖" : ""}`, CW-PAD*2, 2);
     ctx.font = `900 40px ${SERIF}`;
     const tt = twdTotals(rs);
     const tot = wrap(ctx, "台幣累計 " + fmtTWD(tt.sum) + (tt.missing ? `（另有 ${tt.missing} 筆未換算）` : ""), CW-PAD*2, 3);
@@ -1496,95 +1545,169 @@ ${body}</div></body></html>`;
       };
     }
 
-    // 從取樣的像素做出 255 色調色盤（中位切割法），第 256 色保留給「透明＝沿用上一格」
-    function buildPalette(samples){
-      const hist = new Uint32Array(32768);
-      for (const s of samples){ for (let i = 0; i < s.length; i += 4 * 3){ if (s[i+3] < 128) continue; hist[((s[i] >> 3) << 10) | ((s[i+1] >> 3) << 5) | (s[i+2] >> 3)]++; } }
-      const colors = []; for (let k = 0; k < 32768; k++) if (hist[k]) colors.push(k);
-      if (!colors.length) colors.push(0);
-      let boxes = [colors];
-      while (boxes.length < 255){
-        let bi = -1, best = -1, bestCh = 0;
-        boxes.forEach((b, i) => {
-          if (b.length < 2) return;
-          let mn = [31,31,31], mx = [0,0,0];
-          for (const k of b){ const c = [k >> 10, (k >> 5) & 31, k & 31]; for (let j = 0; j < 3; j++){ if (c[j] < mn[j]) mn[j] = c[j]; if (c[j] > mx[j]) mx[j] = c[j]; } }
-          for (let j = 0; j < 3; j++){ const r = (mx[j] - mn[j]) * Math.sqrt(b.length); if (r > best){ best = r; bi = i; bestCh = j; } }
-        });
-        if (bi < 0 || best <= 0) break;
-        const b = boxes[bi], sh = [10, 5, 0][bestCh];
-        b.sort((x, y) => ((x >> sh) & 31) - ((y >> sh) & 31));
-        let tot = 0; for (const k of b) tot += hist[k];
-        let acc = 0, cut = 1; for (let i = 0; i < b.length - 1; i++){ acc += hist[b[i]]; if (acc >= tot / 2){ cut = i + 1; break; } }
-        boxes.splice(bi, 1, b.slice(0, cut), b.slice(cut));
+    // ---- 選色（每一格各自做調色盤）----
+    // 顏色不超過上限時直接用原本的顏色（完全不失真）；超過時用「依變異數切割＋k-means 微調」挑出最接近的顏色
+    const HB = 1 << 15, hCnt = new Uint32Array(HB), hR = new Float64Array(HB), hG = new Float64Array(HB), hB = new Float64Array(HB);
+    const binOf = (r, g, b) => ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+    function quantize(rgb, maxColors){
+      const n = rgb.length / 3;
+      // 1) 先試試原本的顏色夠不夠少
+      const exact = new Map(); let fits = true;
+      for (let i = 0; i < rgb.length; i += 3){
+        const k = (rgb[i] << 16) | (rgb[i+1] << 8) | rgb[i+2];
+        if (!exact.has(k)){ if (exact.size >= maxColors){ fits = false; break; } exact.set(k, exact.size); }
       }
-      const pal = new Uint8Array(256 * 3);
-      boxes.forEach((b, i) => {
-        let r = 0, g = 0, bl = 0, w = 0;
-        for (const k of b){ const h = hist[k] || 1; r += ((k >> 10) << 3 | 4) * h; g += (((k >> 5) & 31) << 3 | 4) * h; bl += ((k & 31) << 3 | 4) * h; w += h; }
-        pal[i*3] = Math.round(r / w); pal[i*3+1] = Math.round(g / w); pal[i*3+2] = Math.round(bl / w);
-      });
-      return {pal, count: boxes.length};
-    }
-    function mapper(palInfo){
-      const {pal, count} = palInfo, cache = new Int16Array(32768).fill(-1);
-      return (r, g, b) => {
-        const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
-        let v = cache[key];
-        if (v < 0){
-          let best = 1e9; v = 0;
-          for (let i = 0; i < count; i++){
-            const dr = pal[i*3] - r, dg = pal[i*3+1] - g, db = pal[i*3+2] - b, d = dr*dr*2 + dg*dg*3 + db*db;
-            if (d < best){ best = d; v = i; }
-          }
-          cache[key] = v;
-        }
-        return v;
+      if (fits){
+        const pal = new Uint8Array(256 * 3);
+        for (const [k, i] of exact){ pal[i*3] = k >> 16; pal[i*3+1] = (k >> 8) & 255; pal[i*3+2] = k & 255; }
+        return {pal, count: Math.max(1, exact.size), exact};
+      }
+      // 2) 直方圖（每色 6 bits）
+      const used = [];
+      for (let i = 0; i < rgb.length; i += 3){
+        const k = binOf(rgb[i], rgb[i+1], rgb[i+2]);
+        if (!hCnt[k]) used.push(k);
+        hCnt[k]++; hR[k] += rgb[i]; hG[k] += rgb[i+1]; hB[k] += rgb[i+2];
+      }
+      const stat = (bins) => {
+        let c = 0, sr = 0, sg = 0, sb = 0, qr = 0, qg = 0, qb = 0;
+        for (const k of bins){ const w = hCnt[k], r = hR[k] / w, g = hG[k] / w, b = hB[k] / w; c += w; sr += r*w; sg += g*w; sb += b*w; qr += r*r*w; qg += g*g*w; qb += b*b*w; }
+        const vr = qr - sr*sr/c, vg = qg - sg*sg/c, vb = qb - sb*sb/c;
+        return {bins, c, mean: [sr/c, sg/c, sb/c], v: [vr, vg, vb], sse: vr + vg + vb};
       };
+      let boxes = [stat(used)];
+      while (boxes.length < maxColors){
+        let bi = -1, best = 0;
+        for (let i = 0; i < boxes.length; i++) if (boxes[i].bins.length > 1 && boxes[i].sse > best){ best = boxes[i].sse; bi = i; }
+        if (bi < 0) break;
+        const bx = boxes[bi], ch = bx.v[0] >= bx.v[1] && bx.v[0] >= bx.v[2] ? 0 : (bx.v[1] >= bx.v[2] ? 1 : 2);
+        const val = ch === 0 ? (k) => hR[k] / hCnt[k] : ch === 1 ? (k) => hG[k] / hCnt[k] : (k) => hB[k] / hCnt[k];
+        const sorted = bx.bins.slice().sort((a, b) => val(a) - val(b));
+        let acc = 0, cut = 1;
+        for (let i = 0; i < sorted.length - 1; i++){ acc += hCnt[sorted[i]]; if (acc >= bx.c / 2){ cut = i + 1; break; } }
+        boxes.splice(bi, 1, stat(sorted.slice(0, cut)), stat(sorted.slice(cut)));
+      }
+      let pal = boxes.map(b => b.mean.slice());
+      // 3) k-means 微調幾輪，讓每個顏色更貼近實際用到的色彩（顏色組太多時抽樣，避免太慢）
+      const step = Math.max(1, Math.ceil(used.length / 6000));
+      const kmBins = step === 1 ? used : used.filter((_, i) => i % step === 0);
+      for (let it = 0; it < 3; it++){
+        const acc = pal.map(() => [0, 0, 0, 0]);
+        for (const k of kmBins){
+          const w = hCnt[k], r = hR[k] / w, g = hG[k] / w, b = hB[k] / w;
+          let bi = 0, bd = 1e18;
+          for (let j = 0; j < pal.length; j++){ const p = pal[j], d = (p[0]-r)*(p[0]-r)*0.3 + (p[1]-g)*(p[1]-g)*0.59 + (p[2]-b)*(p[2]-b)*0.11; if (d < bd){ bd = d; bi = j; } }
+          const a = acc[bi]; a[0] += r*w; a[1] += g*w; a[2] += b*w; a[3] += w;
+        }
+        pal = pal.map((p, j) => acc[j][3] ? [acc[j][0]/acc[j][3], acc[j][1]/acc[j][3], acc[j][2]/acc[j][3]] : p);
+      }
+      for (const k of used){ hCnt[k] = 0; hR[k] = 0; hG[k] = 0; hB[k] = 0; }
+      const out = new Uint8Array(256 * 3);
+      pal.forEach((p, i) => { out[i*3] = Math.round(p[0]); out[i*3+1] = Math.round(p[1]); out[i*3+2] = Math.round(p[2]); });
+      return {pal: out, count: pal.length, exact: null};
     }
 
-    // 編碼器：一格一格加入（RGBA 畫面＋停留毫秒），只記錄有變動的區塊
-    function encoder(W, H, palInfo){
-      const out = writer(), map = mapper(palInfo), T = 255;
+    // 編碼器：一格一格加入（RGBA 畫面＋停留毫秒）。每格只記錄有變動的區塊，並給它自己的 256 色
+    function encoder(W, H, opts = {}){
+      const out = writer(), T = 255, DITHER = opts.dither === false ? 0 : 0.85;
       out.bytes(new TextEncoder().encode("GIF89a")); out.u16(W); out.u16(H);
-      out.byte(0xF7); out.byte(0); out.byte(0);
-      const pal = palInfo.pal.slice(); out.bytes(pal);
+      out.byte(0x70); out.byte(0); out.byte(0);   // 沒有共用調色盤，每格各自帶
       out.bytes(new Uint8Array([0x21, 0xFF, 0x0B])); out.bytes(new TextEncoder().encode("NETSCAPE2.0"));
       out.bytes(new Uint8Array([0x03, 0x01, 0x00, 0x00, 0x00]));
+      const cache = new Int16Array(HB);
       let prev = null, pending = null;
-      function flush(final){
+      function flush(){
         if (!pending) return;
-        const {idx, delay} = pending;
+        const cur = pending.rgba, delay = pending.delay;
+        // 找出跟上一格不一樣的範圍
         let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
         if (prev){
           x0 = W; y0 = H; x1 = -1; y1 = -1;
-          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){ const k = y * W + x; if (idx[k] !== prev[k]){ if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+          for (let y = 0; y < H; y++){
+            let o = y * W * 4;
+            for (let x = 0; x < W; x++, o += 4){
+              if (cur[o] !== prev[o] || cur[o+1] !== prev[o+1] || cur[o+2] !== prev[o+2]){
+                if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+              }
+            }
+          }
           if (x1 < 0){ x0 = 0; y0 = 0; x1 = 0; y1 = 0; }
         }
-        const w = x1 - x0 + 1, h = y1 - y0 + 1, sub = new Uint8Array(w * h);
+        const w = x1 - x0 + 1, h = y1 - y0 + 1, n = w * h;
+        const changed = new Uint8Array(n); let nc = 0;
         for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
-          const k = (y0 + y) * W + (x0 + x), v = idx[k];
-          sub[y * w + x] = (prev && v === prev[k]) ? T : v;
+          const o = ((y0 + y) * W + x0 + x) * 4;
+          if (!prev || cur[o] !== prev[o] || cur[o+1] !== prev[o+1] || cur[o+2] !== prev[o+2]){ changed[y * w + x] = 1; nc++; }
+        }
+        // 只用「有變動的像素」來挑這一格的顏色
+        const rgb = new Uint8Array(Math.max(1, nc) * 3); let q = 0;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+          if (!changed[y * w + x]) continue;
+          const o = ((y0 + y) * W + x0 + x) * 4; rgb[q++] = cur[o]; rgb[q++] = cur[o+1]; rgb[q++] = cur[o+2];
+        }
+        const P = quantize(rgb.subarray(0, Math.max(3, q)), prev ? 255 : 256);
+        const pal = P.pal, cnt = P.count;
+        const nearest = (r, g, b) => {
+          const k = binOf(r, g, b); let v = cache[k];
+          if (v < 0){
+            let bd = 1e18; v = 0;
+            for (let j = 0; j < cnt; j++){ const dr = pal[j*3]-r, dg = pal[j*3+1]-g, db = pal[j*3+2]-b, d = dr*dr*0.3 + dg*dg*0.59 + db*db*0.11; if (d < bd){ bd = d; v = j; } }
+            cache[k] = v;
+          }
+          return v;
+        };
+        cache.fill(-1);
+        const idx = new Uint8Array(n);
+        if (P.exact){
+          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+            const i = y * w + x;
+            if (!changed[i]){ idx[i] = T; continue; }
+            const o = ((y0 + y) * W + x0 + x) * 4;
+            idx[i] = P.exact.get((cur[o] << 16) | (cur[o+1] << 8) | cur[o+2]);
+          }
+        } else {
+          // Floyd–Steinberg 抖色（蛇行掃描），讓漸層不會變成一塊一塊
+          let eA = new Float32Array((w + 2) * 3), eB = new Float32Array((w + 2) * 3);
+          for (let y = 0; y < h; y++){
+            const ltr = (y & 1) === 0;
+            eB.fill(0);
+            for (let s = 0; s < w; s++){
+              const x = ltr ? s : w - 1 - s, i = y * w + x, e = (x + 1) * 3;
+              if (!changed[i]){ idx[i] = T; continue; }
+              const o = ((y0 + y) * W + x0 + x) * 4;
+              const r = Math.max(0, Math.min(255, cur[o] + eA[e])), g = Math.max(0, Math.min(255, cur[o+1] + eA[e+1])), b = Math.max(0, Math.min(255, cur[o+2] + eA[e+2]));
+              const v = nearest(r | 0, g | 0, b | 0); idx[i] = v;
+              if (DITHER){
+                const er = (r - pal[v*3]) * DITHER, eg = (g - pal[v*3+1]) * DITHER, eb = (b - pal[v*3+2]) * DITHER;
+                const f = ltr ? 3 : -3;
+                eA[e+f] += er*7/16; eA[e+f+1] += eg*7/16; eA[e+f+2] += eb*7/16;
+                eB[e-f] += er*3/16; eB[e-f+1] += eg*3/16; eB[e-f+2] += eb*3/16;
+                eB[e] += er*5/16; eB[e+1] += eg*5/16; eB[e+2] += eb*5/16;
+                eB[e+f] += er/16; eB[e+f+1] += eg/16; eB[e+f+2] += eb/16;
+              }
+            }
+            const t = eA; eA = eB; eB = t;
+          }
         }
         const cs = Math.max(2, Math.min(65535, Math.round(delay / 10)));
         out.bytes(new Uint8Array([0x21, 0xF9, 0x04, (1 << 2) | (prev ? 1 : 0), cs & 255, cs >> 8, T, 0]));
-        out.byte(0x2C); out.u16(x0); out.u16(y0); out.u16(w); out.u16(h); out.byte(0);
-        lzwEncode(sub, 8, out);
-        prev = idx; pending = null;
+        out.byte(0x2C); out.u16(x0); out.u16(y0); out.u16(w); out.u16(h); out.byte(0x87);   // 這一格自己的 256 色調色盤
+        out.bytes(pal);
+        lzwEncode(idx, 8, out);
+        prev = cur; pending = null;
       }
       return {
         add(rgba, delay){
-          const n = W * H, idx = new Uint8Array(n);
-          for (let i = 0, j = 0; i < n; i++, j += 4) idx[i] = map(rgba[j], rgba[j+1], rgba[j+2]);
-          // 跟上一格完全一樣就只延長停留時間
+          const copy = new Uint8ClampedArray(rgba);   // 呼叫端可能會重用同一塊記憶體
           if (pending){
-            let same = true; for (let i = 0; i < n; i++) if (idx[i] !== pending.idx[i]){ same = false; break; }
+            let same = true;
+            for (let i = 0; i < copy.length; i += 4){ if (copy[i] !== pending.rgba[i] || copy[i+1] !== pending.rgba[i+1] || copy[i+2] !== pending.rgba[i+2]){ same = false; break; } }
             if (same){ pending.delay += delay; return; }
             flush();
           }
-          pending = {idx, delay};
+          pending = {rgba: copy, delay};
         },
-        finish(){ flush(true); out.byte(0x3B); return new Blob([out.result()], {type: "image/gif"}); }
+        finish(){ flush(); out.byte(0x3B); return new Blob([out.result()], {type: "image/gif"}); }
       };
     }
 
@@ -1592,7 +1715,7 @@ ${body}</div></body></html>`;
       const u = new Uint8Array(await blob.arrayBuffer());
       return parse(u);
     }
-    return {parse, load, player, buildPalette, encoder};
+    return {parse, load, player, encoder};
   })();
 
   // 一張 GIF → 每一格加上浮水印（或其他處理）→ 重新做成會動的 GIF
@@ -1614,13 +1737,7 @@ ${body}</div></body></html>`;
       drawFrame(dctx, W, H);
       return dctx.getImageData(0, 0, W, H).data;
     };
-    // 先抽幾格做調色盤
-    const nF = gif.frames.length, picks = new Set();
-    for (let k = 0; k < Math.min(16, nF); k++) picks.add(Math.floor(k * nF / Math.min(16, nF)));
-    const samples = [];
-    for (let i = 0; i < gif.frames.length; i++){ const d = render(); if (picks.has(i)) samples.push(d.slice()); }
-    const enc = GifKit.encoder(W, H, GifKit.buildPalette(samples));
-    pl.reset();
+    const enc = GifKit.encoder(W, H);
     for (let i = 0; i < gif.frames.length; i++){
       enc.add(render(), gif.frames[i].delay);
       if (i % 8 === 7) await new Promise(r => setTimeout(r, 0));   // 讓畫面不要卡住
@@ -1703,11 +1820,8 @@ ${body}</div></body></html>`;
       octx.drawImage(card, 0, 0, OUT_W, OUT_H);
       return octx.getImageData(0, 0, OUT_W, OUT_H).data;
     };
-    // 先抽幾格做調色盤，再從頭編碼
-    const samples = [];
-    for (let k = 0; k < Math.min(8, times.length); k++){ samples.push(frameAt(times[Math.floor(k * times.length / Math.min(8, times.length))]).slice()); if (isStale()) return null; }
-    anims.forEach(a => { a.pl.reset(); a.fi = -1; });
-    const enc = GifKit.encoder(OUT_W, OUT_H, GifKit.buildPalette(samples));
+    // 每一格各自挑顏色（GIF 每格最多 256 色），色差最小
+    const enc = GifKit.encoder(OUT_W, OUT_H);
     for (let k = 0; k < times.length; k++){
       const t = times[k], next = k + 1 < times.length ? times[k + 1] : total;
       enc.add(frameAt(t), Math.max(20, next - t));
