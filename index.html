@@ -51,6 +51,7 @@
   .btn:disabled{opacity:.5;cursor:default}
   .btn.sm{padding:6px 12px;font-size:13px}
 
+  .head-btns{display:flex;gap:8px;flex-wrap:wrap}
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:18px}
   .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
   .stat .k{color:var(--muted);font-size:12.5px}
@@ -192,10 +193,13 @@
       <h1>委託紀錄簿<span class="author">by 懧雃</span></h1>
       <p class="sub">每一筆委託、每一位繪師、每一張完成的插圖</p>
     </div>
-    <button class="btn primary" id="addBtn" hidden>＋ 新增委託</button>
+    <div class="head-btns">
+      <button class="btn" id="installBtn" type="button" hidden>📲 安裝 App</button>
+      <button class="btn primary" id="addBtn" hidden>＋ 新增委託</button>
+    </div>
   </header>
 
-  <p class="local-note" id="localNote">🔒 你的紀錄和插圖只存在<b>這台裝置的瀏覽器</b>裡，不會上傳到任何地方，別人也看不到。<br>刪除 App 圖示、清除 Safari 資料或換手機前，請先按「💾 備份／還原」下載備份檔。</p>
+  <p class="local-note" id="localNote">🔒 你的紀錄和插圖只存在<b>這台裝置的瀏覽器</b>裡，不會上傳到任何地方，別人也看不到。<br>刪除 App 圖示、清除瀏覽器資料（Safari／Chrome）或換手機前，請先按「💾 備份／還原」下載備份檔。</p>
   <div id="notice"></div>
 
   <section class="stats" id="stats"></section>
@@ -250,7 +254,7 @@
     <div class="field">
       <label>完成插圖（可多張）</label>
       <div class="drop" id="drop">點此選擇圖片，或把圖片拖曳到這裡</div>
-      <small class="gif-tip">GIF 動圖會保留動畫。成功時圖片左上角會出現「GIF」標籤。<br>・沒出現標籤：手機在上傳前把它轉成了靜態圖，請改點「選擇檔案」，從「檔案」App 選。<br>・有標籤但還是不會動：請到 iPhone「設定」→「輔助使用」→「動態」，打開自動播放動畫影像的選項。</small>
+      <small class="gif-tip">GIF 動圖會保留動畫。成功時圖片左上角會出現「GIF」標籤。<br>・沒出現標籤：手機在上傳前把它轉成了靜態圖。iPhone 請改點「選擇檔案」從「檔案」App 選；Android 請改從「檔案」或「瀏覽」選，不要從「相簿／相片」選。<br>・有標籤但還是不會動：iPhone 請到「設定」→「輔助使用」→「動態」，打開自動播放動畫影像的選項。</small>
       <input type="file" id="fFiles" accept="image/*" multiple hidden>
       <div class="previews" id="previews"></div>
     </div>
@@ -295,6 +299,7 @@
     <div class="share-toggles">
       <label class="chk"><input type="checkbox" id="shAmount"> 顯示金額</label>
       <label class="chk"><input type="checkbox" id="shNotes"> 顯示備註</label>
+      <label class="chk" id="shAnimWrap"><input type="checkbox" id="shAnim" checked> 🎞️ 卡片圖做成會動的 GIF</label>
     </div>
     <div class="opts">
       <button type="button" data-share="card"><b id="shCardLabel">🖼️ 分享卡片圖</b><span>把這筆委託做成一張圖片，可以傳到 LINE、IG、X…</span></button>
@@ -352,7 +357,8 @@
       <button data-exp="html"><b>🌐 圖文網頁（HTML）</b><span>含插圖的單一網頁檔，用瀏覽器開啟</span></button>
     </div>
     <label class="chk"><input type="checkbox" id="expWithImg" checked> 圖片／PDF 包含插圖</label>
-    <p class="exp-sub" style="margin:14px 2px 0">想備份或搬到新裝置？請用工具列的「💾 備份／還原」。</p>
+    <p class="exp-sub" style="margin:14px 2px 0">🎞️ 圖片和 PDF 是靜態格式，GIF 只會顯示第一格；「圖文網頁（HTML）」會保留動畫，單筆也可以用卡片上的「↗ 分享」做成會動的 GIF。</p>
+    <p class="exp-sub" style="margin:8px 2px 0">想備份或搬到新裝置？請用工具列的「💾 備份／還原」。</p>
     </div>
 
     <div id="bkSection" hidden>
@@ -763,7 +769,7 @@
       const looksGif = file.type === "image/gif" || /\.gif$/i.test(file.name);
       const frames = (looksGif || file.type === "") ? await gifFrames(file) : 0;
       if (looksGif && frames === 0){
-        $("#formErr").innerHTML = `⚠️「${esc(file.name)}」送到網頁時已經被手機轉成靜態圖片，所以不會動。請改點「選擇檔案」，從「檔案」App 選這張 GIF。`;
+        $("#formErr").innerHTML = `⚠️「${esc(file.name)}」送到網頁時已經被手機轉成靜態圖片，所以不會動。請改從手機的「檔案」選這張 GIF（iPhone：點「選擇檔案」；Android：選「檔案」或「瀏覽」）。`;
       }
       try {
         const blob = await prepareImage(file);
@@ -870,11 +876,39 @@
 
   // ---------- 匯出 ----------
   // 檔案準備好後，讓使用者親手點「分享／儲存」（iOS 需要使用者點擊才能開分享選單）
-  const MIME = {zip:"application/zip", csv:"text/csv", json:"application/json", html:"text/html", pdf:"application/pdf", jpg:"image/jpeg"};
+  const MIME = {zip:"application/zip", csv:"text/csv", json:"application/json", html:"text/html", pdf:"application/pdf", jpg:"image/jpeg", gif:"image/gif", png:"image/png", webp:"image/webp"};
+  // 電腦（不是手機、平板）：直接下載，不用再按一次確認
+  const IS_DESKTOP = (() => {
+    const ua = navigator.userAgent || "";
+    if (/iPhone|iPad|iPod|Android|Mobile/i.test(ua)) return false;
+    if (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) return false;   // iPad 會假裝成 Mac
+    return true;
+  })();
+  function directDownload(blob, filename){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.style.display = "none";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  }
   function save(filename, data){
     const ext = filename.split(".").pop().toLowerCase();
     const type = MIME[ext] || "application/octet-stream";
     const blob = new Blob([data], {type});
+    if (IS_DESKTOP){
+      directDownload(blob, filename);
+      // 留一個小提示，萬一瀏覽器擋下來可以再按一次
+      const box = $("#saveReady"), dl = $("#saveDl"), cancel = $("#saveCancel");
+      const mb = blob.size / 1048576;
+      $("#saveName").innerHTML = `⬇ 已開始下載：${esc(filename)} <small>（${mb >= 1 ? mb.toFixed(1) + " MB" : Math.max(1, Math.round(blob.size/1024)) + " KB"}）沒看到檔案的話，按「重新下載」。</small>`;
+      $("#saveShare").hidden = true;
+      dl.removeAttribute("href"); dl.textContent = "⬇ 重新下載"; dl.className = "btn";
+      dl.onclick = (e) => { e.preventDefault(); directDownload(blob, filename); };
+      cancel.textContent = "關閉"; cancel.onclick = () => { box.hidden = true; };
+      box.hidden = false;
+      return Promise.resolve(true);
+    }
+    $("#saveDl").textContent = "⬇ 下載"; $("#saveCancel").textContent = "取消";
     let file = null; try { file = new File([blob], filename, {type}); } catch(_){}
     const canShare = !!(file && navigator.canShare && navigator.share && (() => { try { return navigator.canShare({files:[file]}); } catch(_){ return false; } })());
     const url = URL.createObjectURL(blob);
@@ -912,6 +946,16 @@
   };
 
   async function imgToDataUrl(id, r){
+    // GIF 動圖：保留動畫（需要浮水印就每一格都加上）
+    const raw = await readImage(id);
+    if (await gifFrames(raw) > 1){
+      let g = raw;
+      if (wmSettings.export){
+        const text = wmTextFor(r), op = wmSettings.opacity;
+        try { g = (await transformGif(raw, (ctx, W, H) => drawWatermark(ctx, 0, 0, W, H, text, op, 0), 1400)) || raw; } catch(_){}
+      }
+      return "data:image/gif;base64," + await blobToB64(g);
+    }
     const bmp = await loadBitmap(await readImage(id));
     const max = 1400, s = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const c = document.createElement("canvas"); c.width = Math.round(bmp.width*s); c.height = Math.round(bmp.height*s);
@@ -1270,6 +1314,7 @@ ${body}</div></body></html>`;
   const IS_APP = true;
   // 產生多張圖時，讓使用者選擇一次存全部或逐張存
   function chooseMulti(files){
+    if (IS_DESKTOP) return Promise.resolve("zip");   // 電腦直接下載一個 ZIP
     const box = $("#multiReady"), shareBtn = $("#multiShare");
     let canShareAll = false;
     if (IS_APP && navigator.canShare && navigator.share){
@@ -1281,7 +1326,7 @@ ${body}</div></body></html>`;
     $("#multiZip").className = canShareAll ? "btn" : "btn primary";
     $("#multiTip").innerHTML = canShareAll
       ? "💡 按「一次儲存全部」後選「儲存 " + files.length + " 張影像」，就會全部存進相簿。"
-      : "💡 建議用「一次下載（ZIP）」：所有圖片會包成一個壓縮檔，只要按一次。iPhone 可以在「檔案」App 點一下壓縮檔解開；電腦直接點兩下就能解開。";
+      : "💡 建議用「一次下載（ZIP）」：所有圖片會包成一個壓縮檔，只要按一次。iPhone 可以在「檔案」App 點一下壓縮檔解開；Android 會存到「下載」資料夾，用「Files」或檔案管理 App 點一下就能解開；電腦直接點兩下就能解開。";
     box.hidden = false;
     setTimeout(() => box.scrollIntoView({behavior: "smooth", block: "center"}), 50);
     return new Promise(resolve => {
@@ -1296,6 +1341,292 @@ ${body}</div></body></html>`;
       $("#multiEach").onclick = () => done("each");
       $("#multiCancel").onclick = () => done(null);
     });
+  }
+
+  // ================= GIF 動圖工具（讀取每一格、重新製作會動的 GIF）=================
+  const GifKit = (() => {
+    // ---- 解碼 ----
+    function lzwDecode(minCodeSize, data, pixelCount){
+      const out = new Uint8Array(pixelCount);
+      const clear = 1 << minCodeSize, eoi = clear + 1;
+      let codeSize = minCodeSize + 1, codeMask = (1 << codeSize) - 1, next = eoi + 1;
+      const prefix = new Int16Array(4096), suffix = new Uint8Array(4096), stack = new Uint8Array(4097);
+      for (let i = 0; i < clear; i++){ prefix[i] = -1; suffix[i] = i; }
+      let datum = 0, bits = 0, pos = 0, old = -1, first = 0, op = 0;
+      while (op < pixelCount){
+        while (bits < codeSize){ if (pos >= data.length) return out; datum |= data[pos++] << bits; bits += 8; }
+        let code = datum & codeMask; datum >>>= codeSize; bits -= codeSize;
+        if (code === clear){ codeSize = minCodeSize + 1; codeMask = (1 << codeSize) - 1; next = eoi + 1; old = -1; continue; }
+        if (code === eoi) break;
+        if (old === -1){ if (code >= clear) continue; out[op++] = suffix[code]; old = code; first = code; continue; }
+        const inCode = code; let sp = 0;
+        if (code >= next){ stack[sp++] = first; code = old; }
+        while (code > eoi){ stack[sp++] = suffix[code]; code = prefix[code]; }
+        first = suffix[code]; stack[sp++] = first;
+        if (next < 4096){
+          prefix[next] = old; suffix[next] = first; next++;
+          if ((next & codeMask) === 0 && next < 4096){ codeSize++; codeMask = (1 << codeSize) - 1; }
+        }
+        old = inCode;
+        while (sp > 0 && op < pixelCount) out[op++] = stack[--sp];
+      }
+      return out;
+    }
+
+    // 讀出 GIF 的結構（還不解壓每一格，用到時才解）
+    function parse(bytes){
+      const u = bytes;
+      if (!(u[0] === 0x47 && u[1] === 0x49 && u[2] === 0x46)) throw new Error("not gif");
+      const W = u[6] | (u[7] << 8), H = u[8] | (u[9] << 8);
+      const pk = u[10]; let p = 13, gct = null;
+      if (pk & 0x80){ const n = 2 << (pk & 7); gct = u.subarray(p, p + n * 3); p += n * 3; }
+      const frames = []; let gce = {delay: 10, disposal: 0, trans: -1};
+      while (p < u.length){
+        const b = u[p++];
+        if (b === 0x21){
+          const label = u[p++];
+          if (label === 0xF9 && u[p] === 4){
+            const f = u[p + 1];
+            gce = {disposal: (f >> 2) & 7, trans: (f & 1) ? u[p + 4] : -1, delay: u[p + 2] | (u[p + 3] << 8)};
+          }
+          while (p < u.length){ const n = u[p++]; if (!n) break; p += n; }
+        } else if (b === 0x2C){
+          const x = u[p] | (u[p+1] << 8), y = u[p+2] | (u[p+3] << 8), w = u[p+4] | (u[p+5] << 8), h = u[p+6] | (u[p+7] << 8);
+          const f = u[p + 8]; p += 9;
+          let lct = null;
+          if (f & 0x80){ const n = 2 << (f & 7); lct = u.subarray(p, p + n * 3); p += n * 3; }
+          const minCode = u[p++];
+          const chunks = []; let total = 0;
+          while (p < u.length){ const n = u[p++]; if (!n) break; chunks.push(u.subarray(p, p + n)); total += n; p += n; }
+          const data = new Uint8Array(total); let o = 0; for (const c of chunks){ data.set(c, o); o += c.length; }
+          frames.push({x, y, w, h, interlaced: !!(f & 0x40), pal: lct || gct, minCode, data,
+            delay: Math.max(2, gce.delay || 10) * 10, disposal: gce.disposal, trans: gce.trans});
+          gce = {delay: 10, disposal: 0, trans: -1};
+        } else if (b === 0x3B) break;
+        else break;
+      }
+      return {width: W, height: H, frames, duration: frames.reduce((n, f) => n + f.delay, 0)};
+    }
+
+    // 依序播放：每次 next() 回傳下一格合成後的完整畫面（RGBA）
+    function player(gif){
+      const W = gif.width, H = gif.height, n = W * H * 4;
+      let buf, i, saved, pendingDisposal;
+      function reset(){ buf = new Uint8ClampedArray(n); i = 0; saved = null; pendingDisposal = null; }
+      reset();
+      function next(){
+        if (!gif.frames.length) return buf;
+        if (i >= gif.frames.length) reset();
+        if (pendingDisposal){ pendingDisposal(); pendingDisposal = null; }
+        const f = gif.frames[i++];
+        if (f.disposal === 3) saved = buf.slice();
+        const idx = lzwDecode(f.minCode, f.data, f.w * f.h), pal = f.pal;
+        const rows = [];
+        if (f.interlaced){ for (const [s, st] of [[0,8],[4,8],[2,4],[1,2]]) for (let r = s; r < f.h; r += st) rows.push(r); }
+        for (let k = 0; k < f.h; k++){
+          const ry = f.interlaced ? rows[k] : k, yy = f.y + ry; if (yy >= H) continue;
+          for (let xx = 0; xx < f.w; xx++){
+            const X = f.x + xx; if (X >= W) continue;
+            const ci = idx[k * f.w + xx]; if (ci === f.trans || !pal) continue;
+            const o = (yy * W + X) * 4, c = ci * 3;
+            buf[o] = pal[c]; buf[o+1] = pal[c+1]; buf[o+2] = pal[c+2]; buf[o+3] = 255;
+          }
+        }
+        if (f.disposal === 2){
+          pendingDisposal = () => { for (let yy = f.y; yy < Math.min(H, f.y + f.h); yy++) buf.fill(0, (yy * W + f.x) * 4, (yy * W + Math.min(W, f.x + f.w)) * 4); };
+        } else if (f.disposal === 3 && saved){ const s = saved; pendingDisposal = () => { buf.set(s); }; }
+        return buf;
+      }
+      return {reset, next, get index(){ return i; }};
+    }
+
+    // ---- 編碼 ----
+    function lzwEncode(pixels, minCodeSize, out){
+      const BITS = 12, HSIZE = 5003, masks = [0,1,3,7,15,31,63,127,255,511,1023,2047,4095,8191,16383,32767,65535];
+      const accum = new Uint8Array(256), htab = new Int32Array(HSIZE), codetab = new Int32Array(HSIZE);
+      let cur_accum = 0, cur_bits = 0, a_count = 0, free_ent = 0, maxcode = 0, clear_flg = false, g_init_bits = 0, ClearCode = 0, EOFCode = 0, n_bits = 0;
+      let remaining = pixels.length, curPixel = 0;
+      const MAXCODE = (n) => (1 << n) - 1;
+      const flush_char = () => { if (a_count > 0){ out.byte(a_count); out.bytes(accum.subarray(0, a_count)); a_count = 0; } };
+      const char_out = (c) => { accum[a_count++] = c; if (a_count >= 254) flush_char(); };
+      const cl_hash = () => htab.fill(-1);
+      function output(code){
+        cur_accum &= masks[cur_bits];
+        cur_accum = cur_bits > 0 ? (cur_accum | (code << cur_bits)) : code;
+        cur_bits += n_bits;
+        while (cur_bits >= 8){ char_out(cur_accum & 0xff); cur_accum >>= 8; cur_bits -= 8; }
+        if (free_ent > maxcode || clear_flg){
+          if (clear_flg){ maxcode = MAXCODE(n_bits = g_init_bits); clear_flg = false; }
+          else { ++n_bits; maxcode = n_bits === BITS ? (1 << BITS) : MAXCODE(n_bits); }
+        }
+        if (code === EOFCode){ while (cur_bits > 0){ char_out(cur_accum & 0xff); cur_accum >>= 8; cur_bits -= 8; } flush_char(); }
+      }
+      const cl_block = () => { cl_hash(); free_ent = ClearCode + 2; clear_flg = true; output(ClearCode); };
+      const nextPixel = () => remaining === 0 ? -1 : (--remaining, pixels[curPixel++] & 0xff);
+      out.byte(minCodeSize);
+      g_init_bits = minCodeSize + 1; n_bits = g_init_bits; maxcode = MAXCODE(n_bits);
+      ClearCode = 1 << minCodeSize; EOFCode = ClearCode + 1; free_ent = ClearCode + 2;
+      let ent = nextPixel(), hshift = 0;
+      for (let fcode = HSIZE; fcode < 65536; fcode *= 2) ++hshift;
+      hshift = 8 - hshift;
+      cl_hash(); output(ClearCode);
+      let c;
+      outer: while ((c = nextPixel()) !== -1){
+        const fcode = (c << BITS) + ent;
+        let i = (c << hshift) ^ ent;
+        if (htab[i] === fcode){ ent = codetab[i]; continue; }
+        if (htab[i] >= 0){
+          let disp = HSIZE - i; if (i === 0) disp = 1;
+          do { if ((i -= disp) < 0) i += HSIZE; if (htab[i] === fcode){ ent = codetab[i]; continue outer; } } while (htab[i] >= 0);
+        }
+        output(ent); ent = c;
+        if (free_ent < (1 << BITS)){ codetab[i] = free_ent++; htab[i] = fcode; } else cl_block();
+      }
+      output(ent); output(EOFCode);
+      out.byte(0);
+    }
+    function writer(){
+      let a = new Uint8Array(1 << 20), n = 0;
+      const grow = (k) => { if (n + k > a.length){ let m = a.length * 2; while (m < n + k) m *= 2; const b = new Uint8Array(m); b.set(a.subarray(0, n)); a = b; } };
+      return {
+        byte(v){ grow(1); a[n++] = v & 255; },
+        u16(v){ grow(2); a[n++] = v & 255; a[n++] = (v >> 8) & 255; },
+        bytes(arr){ grow(arr.length); a.set(arr, n); n += arr.length; },
+        result(){ return a.slice(0, n); }
+      };
+    }
+
+    // 從取樣的像素做出 255 色調色盤（中位切割法），第 256 色保留給「透明＝沿用上一格」
+    function buildPalette(samples){
+      const hist = new Uint32Array(32768);
+      for (const s of samples){ for (let i = 0; i < s.length; i += 4 * 3){ if (s[i+3] < 128) continue; hist[((s[i] >> 3) << 10) | ((s[i+1] >> 3) << 5) | (s[i+2] >> 3)]++; } }
+      const colors = []; for (let k = 0; k < 32768; k++) if (hist[k]) colors.push(k);
+      if (!colors.length) colors.push(0);
+      let boxes = [colors];
+      while (boxes.length < 255){
+        let bi = -1, best = -1, bestCh = 0;
+        boxes.forEach((b, i) => {
+          if (b.length < 2) return;
+          let mn = [31,31,31], mx = [0,0,0];
+          for (const k of b){ const c = [k >> 10, (k >> 5) & 31, k & 31]; for (let j = 0; j < 3; j++){ if (c[j] < mn[j]) mn[j] = c[j]; if (c[j] > mx[j]) mx[j] = c[j]; } }
+          for (let j = 0; j < 3; j++){ const r = (mx[j] - mn[j]) * Math.sqrt(b.length); if (r > best){ best = r; bi = i; bestCh = j; } }
+        });
+        if (bi < 0 || best <= 0) break;
+        const b = boxes[bi], sh = [10, 5, 0][bestCh];
+        b.sort((x, y) => ((x >> sh) & 31) - ((y >> sh) & 31));
+        let tot = 0; for (const k of b) tot += hist[k];
+        let acc = 0, cut = 1; for (let i = 0; i < b.length - 1; i++){ acc += hist[b[i]]; if (acc >= tot / 2){ cut = i + 1; break; } }
+        boxes.splice(bi, 1, b.slice(0, cut), b.slice(cut));
+      }
+      const pal = new Uint8Array(256 * 3);
+      boxes.forEach((b, i) => {
+        let r = 0, g = 0, bl = 0, w = 0;
+        for (const k of b){ const h = hist[k] || 1; r += ((k >> 10) << 3 | 4) * h; g += (((k >> 5) & 31) << 3 | 4) * h; bl += ((k & 31) << 3 | 4) * h; w += h; }
+        pal[i*3] = Math.round(r / w); pal[i*3+1] = Math.round(g / w); pal[i*3+2] = Math.round(bl / w);
+      });
+      return {pal, count: boxes.length};
+    }
+    function mapper(palInfo){
+      const {pal, count} = palInfo, cache = new Int16Array(32768).fill(-1);
+      return (r, g, b) => {
+        const key = ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
+        let v = cache[key];
+        if (v < 0){
+          let best = 1e9; v = 0;
+          for (let i = 0; i < count; i++){
+            const dr = pal[i*3] - r, dg = pal[i*3+1] - g, db = pal[i*3+2] - b, d = dr*dr*2 + dg*dg*3 + db*db;
+            if (d < best){ best = d; v = i; }
+          }
+          cache[key] = v;
+        }
+        return v;
+      };
+    }
+
+    // 編碼器：一格一格加入（RGBA 畫面＋停留毫秒），只記錄有變動的區塊
+    function encoder(W, H, palInfo){
+      const out = writer(), map = mapper(palInfo), T = 255;
+      out.bytes(new TextEncoder().encode("GIF89a")); out.u16(W); out.u16(H);
+      out.byte(0xF7); out.byte(0); out.byte(0);
+      const pal = palInfo.pal.slice(); out.bytes(pal);
+      out.bytes(new Uint8Array([0x21, 0xFF, 0x0B])); out.bytes(new TextEncoder().encode("NETSCAPE2.0"));
+      out.bytes(new Uint8Array([0x03, 0x01, 0x00, 0x00, 0x00]));
+      let prev = null, pending = null;
+      function flush(final){
+        if (!pending) return;
+        const {idx, delay} = pending;
+        let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
+        if (prev){
+          x0 = W; y0 = H; x1 = -1; y1 = -1;
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++){ const k = y * W + x; if (idx[k] !== prev[k]){ if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } }
+          if (x1 < 0){ x0 = 0; y0 = 0; x1 = 0; y1 = 0; }
+        }
+        const w = x1 - x0 + 1, h = y1 - y0 + 1, sub = new Uint8Array(w * h);
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
+          const k = (y0 + y) * W + (x0 + x), v = idx[k];
+          sub[y * w + x] = (prev && v === prev[k]) ? T : v;
+        }
+        const cs = Math.max(2, Math.min(65535, Math.round(delay / 10)));
+        out.bytes(new Uint8Array([0x21, 0xF9, 0x04, (1 << 2) | (prev ? 1 : 0), cs & 255, cs >> 8, T, 0]));
+        out.byte(0x2C); out.u16(x0); out.u16(y0); out.u16(w); out.u16(h); out.byte(0);
+        lzwEncode(sub, 8, out);
+        prev = idx; pending = null;
+      }
+      return {
+        add(rgba, delay){
+          const n = W * H, idx = new Uint8Array(n);
+          for (let i = 0, j = 0; i < n; i++, j += 4) idx[i] = map(rgba[j], rgba[j+1], rgba[j+2]);
+          // 跟上一格完全一樣就只延長停留時間
+          if (pending){
+            let same = true; for (let i = 0; i < n; i++) if (idx[i] !== pending.idx[i]){ same = false; break; }
+            if (same){ pending.delay += delay; return; }
+            flush();
+          }
+          pending = {idx, delay};
+        },
+        finish(){ flush(true); out.byte(0x3B); return new Blob([out.result()], {type: "image/gif"}); }
+      };
+    }
+
+    async function load(blob){
+      const u = new Uint8Array(await blob.arrayBuffer());
+      return parse(u);
+    }
+    return {parse, load, player, buildPalette, encoder};
+  })();
+
+  // 一張 GIF → 每一格加上浮水印（或其他處理）→ 重新做成會動的 GIF
+  async function transformGif(blob, drawFrame, maxSide = 1600){
+    const gif = await GifKit.load(blob);
+    if (gif.frames.length < 2) return null;
+    const s = Math.min(1, maxSide / Math.max(gif.width, gif.height));
+    const W = Math.max(1, Math.round(gif.width * s)), H = Math.max(1, Math.round(gif.height * s));
+    const src = document.createElement("canvas"); src.width = gif.width; src.height = gif.height;
+    const sctx = src.getContext("2d");
+    const dst = document.createElement("canvas"); dst.width = W; dst.height = H;
+    const dctx = dst.getContext("2d", {willReadFrequently: true});
+    const pl = GifKit.player(gif);
+    const render = () => {
+      const buf = pl.next();
+      sctx.putImageData(new ImageData(buf, gif.width, gif.height), 0, 0);
+      dctx.fillStyle = "#fff"; dctx.fillRect(0, 0, W, H);
+      dctx.drawImage(src, 0, 0, W, H);
+      drawFrame(dctx, W, H);
+      return dctx.getImageData(0, 0, W, H).data;
+    };
+    // 先抽幾格做調色盤
+    const nF = gif.frames.length, picks = new Set();
+    for (let k = 0; k < Math.min(16, nF); k++) picks.add(Math.floor(k * nF / Math.min(16, nF)));
+    const samples = [];
+    for (let i = 0; i < gif.frames.length; i++){ const d = render(); if (picks.has(i)) samples.push(d.slice()); }
+    const enc = GifKit.encoder(W, H, GifKit.buildPalette(samples));
+    pl.reset();
+    for (let i = 0; i < gif.frames.length; i++){
+      enc.add(render(), gif.frames[i].delay);
+      if (i % 8 === 7) await new Promise(r => setTimeout(r, 0));   // 讓畫面不要卡住
+    }
+    src.width = src.height = dst.width = dst.height = 0;
+    return enc.finish();
   }
 
   // ---------- 分享單筆委託 ----------
@@ -1318,6 +1649,95 @@ ${body}</div></body></html>`;
     ctx.fillText("委託紀錄簿 by 懧雃", CW/2, H - 28); ctx.textAlign = "left";
     return c;
   }
+  // ---------- 會動的分享卡片（卡片裡有 GIF 時）----------
+  function shareHasGif(r){ return !!(r && (r.gifs || []).some(id => (r.images || []).includes(id))); }
+  async function renderAnimatedCard(r, opts, isStale){
+    const imgs = r.images || [];
+    const anims = [];
+    for (let i = 0; i < imgs.length; i++){
+      if (!(r.gifs || []).includes(imgs[i])) continue;
+      try {
+        const g = await GifKit.load(await readImage(imgs[i]));
+        if (g.frames.length < 2) continue;
+        const s = Math.min(1, 1100 / Math.max(g.width, g.height));
+        const cell = document.createElement("canvas"); cell.width = Math.max(1, Math.round(g.width * s)); cell.height = Math.max(1, Math.round(g.height * s));
+        const src = document.createElement("canvas"); src.width = g.width; src.height = g.height;
+        const starts = []; let acc = 0; for (const f of g.frames){ starts.push(acc); acc += f.delay; }
+        anims.push({i, g, pl: GifKit.player(g), cell, src, starts, fi: -1});
+      } catch(_){}
+      if (isStale()) return null;
+    }
+    if (!anims.length) return null;
+    const bmps = shareBmps.slice(); anims.forEach(a => { bmps[a.i] = a.cell; });
+    const meas = document.createElement("canvas").getContext("2d");
+    const L = layoutRecord(meas, {...r, notes: opts.notes ? r.notes : "", _hideAmount: !opts.amount}, bmps, IMG_MAX_H);
+    const CH = PAD + L.h + 84;
+    const card = document.createElement("canvas"); card.width = CW; card.height = CH;
+    const ctx = card.getContext("2d");
+    const OUT_W = 720, OUT_H = Math.round(CH * OUT_W / CW);
+    const outC = document.createElement("canvas"); outC.width = OUT_W; outC.height = OUT_H;
+    const octx = outC.getContext("2d", {willReadFrequently: true});
+    // 時間軸：所有 GIF 換格的時間點（最長 12 秒、最多 150 格）
+    const total = Math.min(12000, Math.max(...anims.map(a => a.g.duration)));
+    let times = new Set([0]);
+    for (const a of anims){ for (let base = 0; base < total; base += a.g.duration){ for (const st of a.starts){ if (base + st < total) times.add(base + st); } } }
+    times = [...times].sort((x, y) => x - y);
+    if (times.length > 150){ const step = total / 150; times = Array.from({length: 150}, (_, k) => Math.round(k * step)); }
+    const advance = (a, t) => {
+      const lt = t % a.g.duration;
+      let j = 0; while (j + 1 < a.starts.length && a.starts[j + 1] <= lt) j++;
+      if (j < a.fi){ a.pl.reset(); a.fi = -1; }
+      let buf = null; while (a.fi < j){ buf = a.pl.next(); a.fi++; }
+      if (buf){
+        a.src.getContext("2d").putImageData(new ImageData(buf, a.g.width, a.g.height), 0, 0);
+        const cx = a.cell.getContext("2d"); cx.clearRect(0, 0, a.cell.width, a.cell.height); cx.drawImage(a.src, 0, 0, a.cell.width, a.cell.height);
+      }
+    };
+    const wm = wmSettings.share ? {opacity: wmSettings.opacity} : null;
+    const frameAt = (t) => {
+      anims.forEach(a => advance(a, t));
+      ctx.fillStyle = PC.paper; ctx.fillRect(0, 0, CW, CH);
+      drawRecord(ctx, L, PAD, wm);
+      ctx.fillStyle = PC.muted; ctx.font = `400 22px ${SANS}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+      ctx.fillText("委託紀錄簿 by 懧雃", CW/2, CH - 28); ctx.textAlign = "left";
+      octx.drawImage(card, 0, 0, OUT_W, OUT_H);
+      return octx.getImageData(0, 0, OUT_W, OUT_H).data;
+    };
+    // 先抽幾格做調色盤，再從頭編碼
+    const samples = [];
+    for (let k = 0; k < Math.min(8, times.length); k++){ samples.push(frameAt(times[Math.floor(k * times.length / Math.min(8, times.length))]).slice()); if (isStale()) return null; }
+    anims.forEach(a => { a.pl.reset(); a.fi = -1; });
+    const enc = GifKit.encoder(OUT_W, OUT_H, GifKit.buildPalette(samples));
+    for (let k = 0; k < times.length; k++){
+      const t = times[k], next = k + 1 < times.length ? times[k + 1] : total;
+      enc.add(frameAt(t), Math.max(20, next - t));
+      if (k % 6 === 5){ await new Promise(res => setTimeout(res, 0)); if (isStale()) return null; }
+    }
+    card.width = card.height = outC.width = outC.height = 0;
+    return enc.finish();
+  }
+  let animTimer = null;
+  function scheduleAnimatedCard(){
+    clearTimeout(animTimer);
+    const r = shareRec;
+    if (!r || !shareHasGif(r) || !$("#shAnim").checked) return;
+    const my = shareToken, btn = $("#shareOverlay").querySelector('[data-share="card"]');
+    btn.disabled = true; $("#shCardLabel").textContent = "⏳ 正在製作會動的卡片圖…";
+    animTimer = setTimeout(async () => {
+      const stale = () => my !== shareToken || shareRec !== r;
+      let gif = null;
+      try { gif = await renderAnimatedCard(r, {amount: $("#shAmount").checked, notes: $("#shNotes").checked}, stale); } catch(err){ console.error(err); }
+      if (stale()) return;
+      $("#shCardLabel").textContent = IS_DESKTOP ? "⬇ 下載卡片圖（GIF）" : IS_APP ? "📤 分享卡片圖（GIF）" : "⬇ 儲存卡片圖（GIF）";
+      btn.disabled = false;
+      if (!gif) return;   // 失敗就沿用靜態 JPG
+      shareCardFile = {name: `委託_${safeName(r.title || r.artist)}_${r.date}.gif`, blob: gif};
+      const box = $("#sharePreview"), old = box.querySelector("img");
+      if (old && old.src.startsWith("blob:")) URL.revokeObjectURL(old.src);
+      box.innerHTML = `<img alt="分享預覽" src="${URL.createObjectURL(gif)}">`;
+    }, 600);
+  }
+
   async function refreshSharePreview(){
     if (!shareRec || !shareBmps) return;
     const my = ++shareToken;
@@ -1329,6 +1749,8 @@ ${body}</div></body></html>`;
     if (old && old.src.startsWith("blob:")) URL.revokeObjectURL(old.src);
     box.innerHTML = `<img alt="分享預覽" src="${URL.createObjectURL(blob)}">`;
     $("#shareOverlay").querySelector('[data-share="card"]').disabled = false;
+    $("#shCardLabel").textContent = IS_DESKTOP ? "⬇ 下載卡片圖" : IS_APP ? "📤 分享卡片圖" : "⬇ 儲存卡片圖";
+    scheduleAnimatedCard();
   }
   async function openShare(r){
     if (!r) return;
@@ -1338,9 +1760,10 @@ ${body}</div></body></html>`;
     const imgs = r.images || [];
     const optCard = $("#shareOverlay").querySelector('[data-share="card"]'), optOrig = $("#shareOverlay").querySelector('[data-share="orig"]');
     optCard.disabled = true; optOrig.disabled = true; optOrig.hidden = !imgs.length;
-    $("#shCardLabel").textContent = IS_APP ? "📤 分享卡片圖" : "⬇ 儲存卡片圖";
-    $("#shOrigLabel").textContent = IS_APP ? "📤 分享原始插圖" : "⬇ 儲存原始插圖";
+    $("#shCardLabel").textContent = IS_DESKTOP ? "⬇ 下載卡片圖" : IS_APP ? "📤 分享卡片圖" : "⬇ 儲存卡片圖";
+    $("#shOrigLabel").textContent = IS_DESKTOP ? "⬇ 下載原始插圖" : IS_APP ? "📤 分享原始插圖" : "⬇ 儲存原始插圖";
     syncWmUI(); updateOrigDesc();
+    $("#shAnimWrap").hidden = !shareHasGif(r);
     $("#shareOverlay").classList.add("show");
     // 先準備好檔案，按下分享時才能立刻打開手機的分享選單
     shareBmps = [];
@@ -1362,7 +1785,12 @@ ${body}</div></body></html>`;
         let b = await readImage(imgs[i]);
         if (wmSettings.share){
           $("#shareProg").textContent = `替插圖加上浮水印 ${i+1}/${imgs.length}…`;
-          b = await watermarkBlob(b, wmTextFor(r), wmSettings.opacity);
+          const text = wmTextFor(r), op = wmSettings.opacity;
+          let animated = null;
+          if (await gifFrames(b) > 1){
+            try { animated = await transformGif(b, (ctx, W, H) => drawWatermark(ctx, 0, 0, W, H, text, op, 0)); } catch(_){}
+          }
+          b = animated || await watermarkBlob(b, text, op);
         }
         const ext = EXT[b.type] || ((r.gifs || []).includes(imgs[i]) ? "gif" : "jpg");
         files.push({name: `${safeName(r.title || r.artist)}_${r.date}${imgs.length > 1 ? "_" + (i+1) : ""}.${ext}`, blob: b});
@@ -1377,9 +1805,9 @@ ${body}</div></body></html>`;
   function updateOrigDesc(){
     const r = shareRec; if (!r) return;
     const imgs = r.images || [], hasGif = (r.gifs || []).length > 0;
-    const zip = imgs.length > 1 && !IS_APP ? "（會包成一個 ZIP）" : "";
+    const zip = imgs.length > 1 && (!IS_APP || IS_DESKTOP) ? "（會包成一個 ZIP）" : "";
     $("#shOrigDesc").textContent = wmSettings.share
-      ? `${imgs.length} 張原尺寸插圖，已加上浮水印${zip}${hasGif ? "；GIF 加浮水印後會變成靜態圖" : ""}`
+      ? `${imgs.length} 張原尺寸插圖，已加上浮水印${zip}${hasGif ? "；GIF 加上浮水印後一樣會動" : ""}`
       : `${imgs.length} 張原尺寸插圖${zip}；GIF 會保留動畫`;
   }
   function syncWmUI(){
@@ -1449,10 +1877,15 @@ ${body}</div></body></html>`;
   syncExpWmUI();
   $("#shAmount").addEventListener("change", refreshSharePreview);
   $("#shNotes").addEventListener("change", refreshSharePreview);
+  $("#shAnim").addEventListener("change", refreshSharePreview);
   $("#shareClose").onclick = () => { if (!shareBusy) { $("#shareOverlay").classList.remove("show"); shareRec = null; } };
   $("#shareOverlay").addEventListener("mousedown", e => { if (e.target.id === "shareOverlay" && !shareBusy) { $("#shareOverlay").classList.remove("show"); shareRec = null; } });
 
   async function deliverFiles(files, zipName){
+    if (IS_DESKTOP){
+      directDownload(files.length > 1 ? await makeZip(files) : files[0].blob, files.length > 1 ? zipName : files[0].name);
+      return true;
+    }
     if (IS_APP){
       const fs = files.map(f => new File([f.blob], f.name, {type: f.blob.type || "image/jpeg"}));
       let can = false; try { can = !!(navigator.canShare && navigator.share && navigator.canShare({files: fs})); } catch(_){}
@@ -1478,7 +1911,7 @@ ${body}</div></body></html>`;
     shareBusy = true;
     try {
       const ok = await deliverFiles(files, `${safeName(shareRec.title || shareRec.artist)}_${shareRec.date}_插圖.zip`);
-      if (ok) toast(IS_APP ? "已送出" : "已儲存");
+      if (ok) toast(IS_DESKTOP ? "已開始下載" : IS_APP ? "已送出" : "已儲存");
     } catch(_){ toast("分享失敗，請再試一次"); }
     finally { shareBusy = false; }
   });
@@ -1952,6 +2385,51 @@ ${body}</div></body></html>`;
   })();
 
   // 離線使用
+  // ---------- Android 返回鍵：有視窗開著時，先關視窗而不是離開 App ----------
+  const OVERLAYS = [
+    ["#lb", "#lbClose"], ["#confirmOverlay", "#confirmNo"], ["#fxOverlay", "#fxCancel"],
+    ["#shareOverlay", "#shareClose"], ["#expOverlay", "#expClose"], ["#formOverlay", "#cancelBtn"]
+  ];
+  const isShown = (sel) => { const el = $(sel); return !!el && el.classList.contains("show"); };
+  let backDepth = 0, closingByBack = false;
+  function syncBackState(){
+    const open = OVERLAYS.filter(([sel]) => isShown(sel)).length;
+    while (backDepth < open){ history.pushState({commissionModal: ++backDepth}, ""); }
+    if (open < backDepth && !closingByBack){
+      // 用按鈕關掉的：把多出來的歷史紀錄退掉，按返回鍵才不會「空按一次」
+      const extra = backDepth - open; backDepth = open;
+      ignorePop += extra; history.go(-extra);
+    }
+  }
+  let ignorePop = 0;
+  window.addEventListener("popstate", () => {
+    if (ignorePop > 0){ ignorePop--; return; }
+    const top = OVERLAYS.find(([sel]) => isShown(sel));
+    if (!top){ backDepth = 0; return; }
+    backDepth = Math.max(0, backDepth - 1);
+    closingByBack = true;
+    $(top[1]).click();
+    closingByBack = false;
+    // 有些視窗忙碌中不能關（例如正在匯出），就把歷史紀錄補回去
+    if (isShown(top[0])){ history.pushState({commissionModal: ++backDepth}, ""); }
+  });
+  const ovObserver = new MutationObserver(() => syncBackState());
+  OVERLAYS.forEach(([sel]) => { const el = $(sel); if (el) ovObserver.observe(el, {attributes: true, attributeFilter: ["class"]}); });
+
+  // ---------- 安裝 App 按鈕（Android Chrome、電腦版 Chrome／Edge 會提供；iPhone 請用「加入主畫面」）----------
+  let installEvt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault(); installEvt = e;
+    $("#installBtn").hidden = false;
+  });
+  $("#installBtn").onclick = async () => {
+    if (!installEvt) return;
+    installEvt.prompt();
+    try { const r = await installEvt.userChoice; if (r && r.outcome === "accepted") toast("已安裝，可以從主畫面打開委託紀錄簿"); } catch(_){}
+    installEvt = null; $("#installBtn").hidden = true;
+  };
+  window.addEventListener("appinstalled", () => { $("#installBtn").hidden = true; installEvt = null; });
+
   // 離線使用＋自動更新：每次打開或切回 App 都檢查有沒有新版本
   if ("serviceWorker" in navigator && location.protocol === "https:"){
     const hadController = !!navigator.serviceWorker.controller;
