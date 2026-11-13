@@ -87,6 +87,16 @@
   .fx-row label small{display:block;font-weight:400;color:var(--muted);font-size:12px}
   .fx-row input{border:1px solid var(--line);background:var(--paper);border-radius:10px;padding:9px 11px;width:100%}
   .field small{color:var(--muted);font-size:12.5px}
+  .artist-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+  .artist-row .btn{padding:9px 12px}
+  .artist-row .btn[aria-expanded="true"]{background:var(--accent-soft);border-color:var(--accent)}
+  .artist-panel{margin-top:8px;border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:10px}
+  .artist-panel input{margin-bottom:8px;background:var(--card)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;max-height:210px;overflow-y:auto}
+  .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;cursor:pointer;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+  .chip:hover,.chip.on{border-color:var(--accent);background:var(--accent-soft)}
+  .chip small{color:var(--muted);font-size:12px}
+  .chips .none{color:var(--muted);font-size:13px;padding:4px 2px}
   .title{font-size:14px}
   .notes{color:var(--muted);font-size:13px;white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
   .card .acts{display:flex;gap:6px;margin-top:auto;padding-top:8px}
@@ -197,7 +207,17 @@
       <input type="number" id="fTwd" min="0" step="any" inputmode="decimal">
       <small id="twdHint"></small>
     </div>
-    <div class="field"><label>繪師 <span class="req">*</span></label><input id="fArtist" list="artistList" required placeholder="繪師名稱"><datalist id="artistList"></datalist></div>
+    <div class="field"><label>繪師 <span class="req">*</span></label>
+      <div class="artist-row">
+        <input id="fArtist" required placeholder="輸入新繪師，或從右邊選" autocomplete="off">
+        <button type="button" class="btn sm" id="artistPick" aria-expanded="false">📋 選擇繪師</button>
+      </div>
+      <datalist id="artistList"></datalist>
+      <div class="artist-panel" id="artistPanel" hidden>
+        <input type="search" id="artistSearch" placeholder="搜尋曾合作的繪師…" autocomplete="off">
+        <div class="chips" id="artistChips"></div>
+      </div>
+    </div>
     <div class="field"><label>委託標題／內容</label><input id="fTitle" placeholder="例如：半身立繪、頭像、Q版…"></div>
     <div class="field"><label>備註</label><textarea id="fNotes" placeholder="平台、交稿日、用途授權…"></textarea></div>
     <div class="field">
@@ -518,6 +538,7 @@
     $("#fArtist").value = rec?.artist || "";
     $("#fTitle").value = rec?.title || "";
     $("#fNotes").value = rec?.notes || "";
+    toggleArtistPanel(false);
     $("#fTwd").value = (rec && hasTwdOverride(rec)) ? rec.twd : "";
     updateTwdField();
     formImages = (rec?.images || []).map(id => ({id}));
@@ -538,6 +559,41 @@
   }
   $("#fCurrency").addEventListener("change", updateTwdField);
   $("#fAmount").addEventListener("input", updateTwdField);
+
+  // ---- 選擇曾合作過的繪師
+  function artistStats(){
+    const m = new Map();
+    for (const r of records){
+      const n = (r.artist || "").trim(); if (!n) continue;
+      const cur = m.get(n) || {name:n, count:0, last:""};
+      cur.count++; if (String(r.date) > cur.last) cur.last = String(r.date);
+      m.set(n, cur);
+    }
+    return [...m.values()].sort((a,b) => b.last.localeCompare(a.last) || b.count - a.count || a.name.localeCompare(b.name, "zh-Hant"));
+  }
+  function renderArtistChips(){
+    const q = $("#artistSearch").value.trim().toLowerCase();
+    const cur = $("#fArtist").value.trim();
+    const list = artistStats().filter(a => !q || a.name.toLowerCase().includes(q));
+    $("#artistChips").innerHTML = list.length
+      ? list.map(a => `<button type="button" class="chip ${a.name === cur ? "on" : ""}" data-artist="${esc(a.name)}">${esc(a.name)}<small>${a.count} 筆</small></button>`).join("")
+      : `<div class="none">${records.length ? "找不到符合的繪師" : "還沒有輸入過任何繪師，直接在上面輸入名字就好"}</div>`;
+  }
+  function toggleArtistPanel(show){
+    const panel = $("#artistPanel");
+    show = show ?? panel.hidden;
+    panel.hidden = !show;
+    $("#artistPick").setAttribute("aria-expanded", show ? "true" : "false");
+    if (show){ $("#artistSearch").value = ""; $("#artistSearch").hidden = artistStats().length <= 8; renderArtistChips(); }
+  }
+  $("#artistPick").onclick = () => toggleArtistPanel();
+  $("#artistSearch").addEventListener("input", renderArtistChips);
+  $("#artistChips").addEventListener("click", e => {
+    const c = e.target.closest("[data-artist]"); if (!c) return;
+    $("#fArtist").value = c.dataset.artist;
+    toggleArtistPanel(false);
+    $("#formErr").textContent = "";
+  });
 
   function lastCurrency(){ try { return localStorage.getItem("commission.cur") || "TWD"; } catch(e){ return "TWD"; } }
 
