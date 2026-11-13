@@ -289,6 +289,13 @@
   const urlMap = new Map();      // id -> 可顯示的網址
   const blobUrl = (id) => urlMap.get(id) || ("/_blob/" + id);
   const retried = new Set();
+  // 讀取一張插圖的原始檔（本機版會改成直接從裝置儲存讀取）
+  let readImage = async (id) => {
+    for (const u of [urlMap.get(id), "/_blob/" + id].filter(Boolean)){
+      try { const r = await fetch(u, {credentials: "include"}); if (r.ok){ const b = await r.blob(); if (b.size) return b; } } catch(_){}
+    }
+    throw new Error("read");
+  };
   // 圖片載入失敗時：改用 fetch 取回後轉成 blob: 網址再顯示
   document.addEventListener("error", async (e) => {
     const img = e.target;
@@ -729,8 +736,7 @@
   };
 
   async function imgToDataUrl(id){
-    const resp = await fetch(blobUrl(id), {credentials: "include"}); if (!resp.ok) throw new Error("fetch");
-    const bmp = await loadBitmap(await resp.blob());
+    const bmp = await loadBitmap(await readImage(id));
     const max = 1400, s = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const c = document.createElement("canvas"); c.width = Math.round(bmp.width*s); c.height = Math.round(bmp.height*s);
     const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(bmp,0,0,c.width,c.height);
@@ -827,8 +833,7 @@ ${body}</div></body></html>`;
   }
 
   async function loadForExport(id){
-    const r = await fetch(blobUrl(id), {credentials:"include"}); if (!r.ok) throw 0;
-    const im = await loadBitmap(await r.blob());
+    const im = await loadBitmap(await readImage(id));
     const max = 1100, s = Math.min(1, max / Math.max(im.width, im.height));
     const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(im.width*s)); c.height = Math.max(1, Math.round(im.height*s));
     c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
@@ -1028,6 +1033,11 @@ ${body}</div></body></html>`;
     try { const t = localStorage.getItem("commission.lastBackup"); return t ? `這台裝置上次備份：${t}` : "這台裝置還沒有下載過備份"; } catch(_){ return ""; }
   }
 
+  // 有插圖讀不到時先講清楚，避免拿到不完整的備份卻不知道
+  function confirmFailedImages(failed, total){
+    toast(`注意：${total} 張插圖中有 ${failed} 張讀取失敗，這份備份不包含那些圖`, 6000);
+    return true;
+  }
   async function exportBackup(progress){
     const all = [...records].sort((a,b) => String(a.date).localeCompare(String(b.date)));
     const total = all.reduce((n,r)=>n+(r.images||[]).length,0); let done = 0, failed = 0;
@@ -1038,15 +1048,15 @@ ${body}</div></body></html>`;
       for (const aid of images || []){
         progress(`打包插圖 ${++done}/${total}…`);
         try {
-          const r = await fetch(blobUrl(aid), {credentials:"include"}); if (!r.ok) throw 0;
-          const b = await r.blob();
+          const b = await readImage(aid);
           const type = OK_TYPES.includes(b.type) ? b.type : "image/jpeg";
           imgs.push({type, data: await blobToB64(b)});
         } catch(_){ failed++; }
       }
       parts.push((i ? "," : "") + JSON.stringify({id, ...data, images: imgs}));
     }
-    parts.push("]}");
+    parts.push(`],"imageCount":${done - failed},"imageFailed":${failed}}`);
+    if (failed && !confirmFailedImages(failed, total)) { progress(""); return; }
     progress("");
     const ok = await save(`委託紀錄_備份_${today()}.json`, new Blob(parts, {type:"application/json"}));
     if (ok){
@@ -1072,12 +1082,27 @@ ${body}</div></body></html>`;
         for (const c of FX_CURS){ const v = Number(j.rates[c]); if (!(merged[c] > 0) && v > 0){ merged[c] = v; changed = true; } }
         if (changed){ try { await ratesStore.save(merged); rates = merged; render(); } catch(_){} }
       }
-      pendingRestore = fresh;
+      // 已存在、但插圖全部顯示不出來的紀錄：用備份裡的插圖補回
+      const byId = new Map(records.map(r => [String(r.id), r]));
+      const repair = [];
+      for (const r of j.records){
+        if (!r || !r.id) continue;
+        const cur = byId.get(String(r.id)); if (!cur) continue;
+        const bimgs = (r.images || []).filter(im => im && im.data);
+        const working = (cur.images || []).filter(id => urlMap.has(id));
+        if (bimgs.length && !working.length) repair.push({r, cur});
+      }
+      pendingRestore = {fresh, repair};
+      const imgTotal = j.records.reduce((n,r) => n + ((r && r.images) || []).filter(im => im && im.data).length, 0);
       const when = j.exportedAt ? new Date(j.exportedAt).toLocaleString("zh-TW") : "未知";
-      $("#bkInfo").innerHTML = fresh.length
-        ? `備份時間：${esc(when)}<br>備份檔共 ${j.records.length} 筆，其中 <b>${fresh.length} 筆</b>目前清單裡沒有，會被加回來（已存在的不會重複新增，也不會被覆蓋）。`
-        : `備份時間：${esc(when)}<br>備份檔裡的 ${j.records.length} 筆紀錄目前都已在清單中，不需要還原。`;
-      $("#bkGo").hidden = !fresh.length;
+      const lines = [`備份時間：${esc(when)}`, `備份檔共 ${j.records.length} 筆紀錄、${imgTotal} 張插圖。`];
+      if (!imgTotal && j.records.some(r => r && (r.images || []).length === 0)) lines.push(`⚠️ 這份備份檔裡沒有任何插圖，只能還原文字明細。${j.imageFailed ? `（備份時有 ${j.imageFailed} 張讀取失敗）` : ""}`);
+      if (fresh.length) lines.push(`<b>${fresh.length} 筆</b>目前清單裡沒有，會被加回來。`);
+      if (repair.length) lines.push(`<b>${repair.length} 筆</b>已在清單中但插圖顯示不出來，會用備份裡的插圖補回。`);
+      if (!fresh.length && !repair.length) lines.push("備份裡的紀錄和插圖目前都已在清單中，不需要還原。");
+      else lines.push("已存在且正常的紀錄不會重複新增，也不會被覆蓋。");
+      $("#bkInfo").innerHTML = lines.join("<br>");
+      $("#bkGo").hidden = !fresh.length && !repair.length;
       $("#bkConfirm").hidden = false;
       setProg("");
       $("#bkConfirm").scrollIntoView({behavior:"smooth", block:"center"});
@@ -1090,20 +1115,34 @@ ${body}</div></body></html>`;
   $("#bkGo").onclick = async () => {
     if (!pendingRestore || exporting || !col) return;
     exporting = true; $("#bkGo").disabled = true; $("#bkCancel").disabled = true;
-    const list = pendingRestore; let ok = 0, imgFail = 0;
-    const total = list.reduce((n,r)=>n+(r.images||[]).length,0); let done = 0;
+    const {fresh: list, repair} = pendingRestore; let ok = 0, fixed = 0, imgFail = 0;
+    const total = [...list, ...repair.map(x => x.r)].reduce((n,r)=>n+(r.images||[]).length,0); let done = 0;
+    async function restoreImages(images){
+      const ids = [];
+      for (const im of images || []){
+        if (!im || !im.data) continue;
+        setProg(`還原插圖 ${++done}/${total}…`);
+        try {
+          const type = OK_TYPES.includes(im.type) ? im.type : "image/jpeg";
+          const blob = b64ToBlob(im.data, type);
+          const res = await assets.upload(blob, {type});
+          urlMap.set(res.id, URL.createObjectURL(blob));   // 還原後立刻看得到
+          ids.push(res.id);
+        } catch(_){ imgFail++; }
+      }
+      return ids;
+    }
     try {
+      for (const {r, cur} of repair){
+        const ids = await restoreImages(r.images);
+        if (!ids.length) continue;
+        const {id, ...curData} = cur;
+        await col.doc(String(id)).set({...curData, images: ids, updatedAt: Date.now()});
+        fixed++;
+      }
       for (const r of list){
         const {id, images, ...data} = r;
-        const ids = [];
-        for (const im of images || []){
-          setProg(`還原插圖 ${++done}/${total}…`);
-          try {
-            const type = OK_TYPES.includes(im.type) ? im.type : "image/jpeg";
-            const res = await assets.upload(b64ToBlob(im.data, type), {type});
-            ids.push(res.id);
-          } catch(_){ imgFail++; }
-        }
+        const ids = await restoreImages(images);
         setProg(`寫入紀錄 ${ok+1}/${list.length}…`);
         const clean = {
           date: String(data.date || ""), amount: Number(data.amount) || 0, currency: String(data.currency || "TWD"),
@@ -1115,10 +1154,12 @@ ${body}</div></body></html>`;
         ok++;
       }
       setProg("");
-      toast(imgFail ? `已還原 ${ok} 筆，有 ${imgFail} 張插圖失敗` : `已還原 ${ok} 筆紀錄`, 3500);
+      const msg = [ok ? `已還原 ${ok} 筆` : "", fixed ? `補回 ${fixed} 筆的插圖` : ""].filter(Boolean).join("、") || "沒有需要還原的內容";
+      toast(imgFail ? `${msg}，有 ${imgFail} 張插圖失敗` : msg, 3500);
+      render();
       $("#bkConfirm").hidden = true; pendingRestore = null;
     } catch(err){
-      setProg(err?.code === "quota_exceeded" ? `儲存空間已滿，已還原 ${ok} 筆。` : `還原中斷，已還原 ${ok} 筆。可再選一次同一個備份檔繼續（已還原的會自動略過）。`);
+      setProg(err?.code === "quota_exceeded" ? `儲存空間已滿，已還原 ${ok} 筆。` : `還原中斷，已還原 ${ok} 筆。可再選一次同一個備份檔繼續（已還原的會自動略過，缺圖的會再補）。`);
     } finally { exporting = false; $("#bkGo").disabled = false; $("#bkCancel").disabled = false; }
   };
 
@@ -1178,6 +1219,21 @@ ${body}</div></body></html>`;
       t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
     });
   }
+  // 圖片存成原始位元組＋格式；舊版存的是 Blob，兩種都讀得懂
+  function storedToBlob(v){
+    if (v instanceof Blob) return v;
+    if (v && v.buf) return new Blob([v.buf], {type: v.type || "image/jpeg"});
+    throw new Error("bad image");
+  }
+  readImage = async (id) => {
+    if (idb){
+      try { const v = await tx("images", "readonly", s => s.get(id)); if (v){ const b = storedToBlob(v); if (b.size) { await b.slice(0, 1).arrayBuffer(); return b; } } } catch(_){}
+    }
+    if (memImg.has(id)) return memImg.get(id);
+    const u = urlMap.get(id);
+    if (u){ const r = await fetch(u); if (r.ok){ const b = await r.blob(); if (b.size) return b; } }
+    throw new Error("read");
+  };
   function emit(){
     const snap = { docs: [...mem.values()].map(d => { const {id, ...x} = d; return {id, exists:true, data:() => x}; }), metadata:{fromCache:false} };
     listeners.forEach(f => f(snap));
@@ -1207,7 +1263,10 @@ ${body}</div></body></html>`;
       const type = opts.type || blob.type || "image/jpeg";
       const b = blob.type === type ? blob : new Blob([blob], {type});
       const id = genId();
-      if (idb) await tx("images", "readwrite", s => s.put(b, id)); else memImg.set(id, b);
+      if (idb){
+        const buf = await b.arrayBuffer();
+        await tx("images", "readwrite", s => s.put({type, buf}, id));
+      } else memImg.set(id, b);
       return {id, url: URL.createObjectURL(b)};
     },
     async delete(id){
@@ -1238,7 +1297,7 @@ ${body}</div></body></html>`;
       (recs || []).forEach(r => mem.set(r.id, r));
       await new Promise((res, rej) => {
         const t = idb.transaction("images", "readonly"), rq = t.objectStore("images").openCursor();
-        rq.onsuccess = () => { const c = rq.result; if (!c) return; urlMap.set(String(c.key), URL.createObjectURL(c.value)); c.continue(); };
+        rq.onsuccess = () => { const c = rq.result; if (!c) return; try { urlMap.set(String(c.key), URL.createObjectURL(storedToBlob(c.value))); } catch(_){} c.continue(); };
         t.oncomplete = res; t.onerror = () => rej(t.error);
       });
       try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch(_){}
