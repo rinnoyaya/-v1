@@ -1551,65 +1551,85 @@ ${body}</div></body></html>`;
     const binOf = (r, g, b) => ((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3);
     function quantize(rgb, maxColors){
       const n = rgb.length / 3;
-      // 1) 先試試原本的顏色夠不夠少
-      const exact = new Map(); let fits = true;
+      // 1) 數一數每個顏色出現幾次（顏色太多時只數前 6 萬種）
+      const freq = new Map(); let overflow = false;
       for (let i = 0; i < rgb.length; i += 3){
         const k = (rgb[i] << 16) | (rgb[i+1] << 8) | rgb[i+2];
-        if (!exact.has(k)){ if (exact.size >= maxColors){ fits = false; break; } exact.set(k, exact.size); }
+        const c = freq.get(k);
+        if (c !== undefined) freq.set(k, c + 1);
+        else if (freq.size < 60000) freq.set(k, 1);
+        else overflow = true;
       }
-      if (fits){
-        const pal = new Uint8Array(256 * 3);
-        for (const [k, i] of exact){ pal[i*3] = k >> 16; pal[i*3+1] = (k >> 8) & 255; pal[i*3+2] = k & 255; }
-        return {pal, count: Math.max(1, exact.size), exact};
+      // 顏色本來就不多：直接用原本的顏色（完全不失真、不抖色）
+      if (!overflow && freq.size <= maxColors){
+        const pal = new Uint8Array(256 * 3), exact = new Map(); let i = 0;
+        for (const k of freq.keys()){ exact.set(k, i); pal[i*3] = k >> 16; pal[i*3+1] = (k >> 8) & 255; pal[i*3+2] = k & 255; i++; }
+        return {pal, count: Math.max(1, i), exact, anchors: exact, dither: false};
       }
-      // 2) 直方圖（每色 6 bits）
+      // 2) 常見的顏色（底色、線條、平塗色塊、浮水印疊出來的顏色）原封不動保留
+      const sorted = [...freq.entries()].sort((x, y) => y[1] - x[1]);
+      const anchors = new Map(); const pal = []; let covered = 0;
+      const minShare = Math.max(2, n * 0.002), maxAnchors = Math.floor(maxColors * 0.6);
+      for (const [k, c] of sorted){
+        if (anchors.size >= maxAnchors || c < minShare) break;
+        anchors.set(k, pal.length); pal.push([k >> 16, (k >> 8) & 255, k & 255]); covered += c;
+      }
+      // 平塗為主的圖（前 maxColors 種顏色就佔了 97% 以上）→ 不抖色，避免出現噪點
+      let topCover = 0; for (let i = 0; i < Math.min(maxColors, sorted.length); i++) topCover += sorted[i][1];
+      const flat = topCover >= n * 0.97;
+      // 3) 剩下的名額給其餘的顏色：依變異數切割＋k-means 微調
       const used = [];
       for (let i = 0; i < rgb.length; i += 3){
+        const k24 = (rgb[i] << 16) | (rgb[i+1] << 8) | rgb[i+2];
+        if (anchors.has(k24)) continue;
         const k = binOf(rgb[i], rgb[i+1], rgb[i+2]);
         if (!hCnt[k]) used.push(k);
         hCnt[k]++; hR[k] += rgb[i]; hG[k] += rgb[i+1]; hB[k] += rgb[i+2];
       }
-      const stat = (bins) => {
-        let c = 0, sr = 0, sg = 0, sb = 0, qr = 0, qg = 0, qb = 0;
-        for (const k of bins){ const w = hCnt[k], r = hR[k] / w, g = hG[k] / w, b = hB[k] / w; c += w; sr += r*w; sg += g*w; sb += b*w; qr += r*r*w; qg += g*g*w; qb += b*b*w; }
-        const vr = qr - sr*sr/c, vg = qg - sg*sg/c, vb = qb - sb*sb/c;
-        return {bins, c, mean: [sr/c, sg/c, sb/c], v: [vr, vg, vb], sse: vr + vg + vb};
-      };
-      let boxes = [stat(used)];
-      while (boxes.length < maxColors){
-        let bi = -1, best = 0;
-        for (let i = 0; i < boxes.length; i++) if (boxes[i].bins.length > 1 && boxes[i].sse > best){ best = boxes[i].sse; bi = i; }
-        if (bi < 0) break;
-        const bx = boxes[bi], ch = bx.v[0] >= bx.v[1] && bx.v[0] >= bx.v[2] ? 0 : (bx.v[1] >= bx.v[2] ? 1 : 2);
-        const val = ch === 0 ? (k) => hR[k] / hCnt[k] : ch === 1 ? (k) => hG[k] / hCnt[k] : (k) => hB[k] / hCnt[k];
-        const sorted = bx.bins.slice().sort((a, b) => val(a) - val(b));
-        let acc = 0, cut = 1;
-        for (let i = 0; i < sorted.length - 1; i++){ acc += hCnt[sorted[i]]; if (acc >= bx.c / 2){ cut = i + 1; break; } }
-        boxes.splice(bi, 1, stat(sorted.slice(0, cut)), stat(sorted.slice(cut)));
-      }
-      let pal = boxes.map(b => b.mean.slice());
-      // 3) k-means 微調幾輪，讓每個顏色更貼近實際用到的色彩（顏色組太多時抽樣，避免太慢）
-      const step = Math.max(1, Math.ceil(used.length / 6000));
-      const kmBins = step === 1 ? used : used.filter((_, i) => i % step === 0);
-      for (let it = 0; it < 3; it++){
-        const acc = pal.map(() => [0, 0, 0, 0]);
-        for (const k of kmBins){
-          const w = hCnt[k], r = hR[k] / w, g = hG[k] / w, b = hB[k] / w;
-          let bi = 0, bd = 1e18;
-          for (let j = 0; j < pal.length; j++){ const p = pal[j], d = (p[0]-r)*(p[0]-r)*0.3 + (p[1]-g)*(p[1]-g)*0.59 + (p[2]-b)*(p[2]-b)*0.11; if (d < bd){ bd = d; bi = j; } }
-          const a = acc[bi]; a[0] += r*w; a[1] += g*w; a[2] += b*w; a[3] += w;
+      const slots = maxColors - pal.length;
+      if (used.length && slots > 0){
+        const stat = (bins) => {
+          let c = 0, sr = 0, sg = 0, sb = 0, qr = 0, qg = 0, qb = 0;
+          for (const k of bins){ const w = hCnt[k], r = hR[k] / w, g = hG[k] / w, b = hB[k] / w; c += w; sr += r*w; sg += g*w; sb += b*w; qr += r*r*w; qg += g*g*w; qb += b*b*w; }
+          const vr = qr - sr*sr/c, vg = qg - sg*sg/c, vb = qb - sb*sb/c;
+          return {bins, c, mean: [sr/c, sg/c, sb/c], v: [vr, vg, vb], sse: vr + vg + vb};
+        };
+        let boxes = [stat(used)];
+        while (boxes.length < slots){
+          let bi = -1, best = 0;
+          for (let i = 0; i < boxes.length; i++) if (boxes[i].bins.length > 1 && boxes[i].sse > best){ best = boxes[i].sse; bi = i; }
+          if (bi < 0) break;
+          const bx = boxes[bi], ch = bx.v[0] >= bx.v[1] && bx.v[0] >= bx.v[2] ? 0 : (bx.v[1] >= bx.v[2] ? 1 : 2);
+          const val = ch === 0 ? (k) => hR[k] / hCnt[k] : ch === 1 ? (k) => hG[k] / hCnt[k] : (k) => hB[k] / hCnt[k];
+          const srt = bx.bins.slice().sort((x, y) => val(x) - val(y));
+          let acc = 0, cut = 1;
+          for (let i = 0; i < srt.length - 1; i++){ acc += hCnt[srt[i]]; if (acc >= bx.c / 2){ cut = i + 1; break; } }
+          boxes.splice(bi, 1, stat(srt.slice(0, cut)), stat(srt.slice(cut)));
         }
-        pal = pal.map((p, j) => acc[j][3] ? [acc[j][0]/acc[j][3], acc[j][1]/acc[j][3], acc[j][2]/acc[j][3]] : p);
+        let extra = boxes.map(b => b.mean.slice());
+        const step = Math.max(1, Math.ceil(used.length / 6000));
+        const kmBins = step === 1 ? used : used.filter((_, i) => i % step === 0);
+        for (let it = 0; it < 3; it++){
+          const acc = extra.map(() => [0, 0, 0, 0]);
+          for (const k of kmBins){
+            const w = hCnt[k], r = hR[k] / w, g = hG[k] / w, b = hB[k] / w;
+            let bi = 0, bd = 1e18;
+            for (let j = 0; j < extra.length; j++){ const q = extra[j], d = (q[0]-r)*(q[0]-r)*0.3 + (q[1]-g)*(q[1]-g)*0.59 + (q[2]-b)*(q[2]-b)*0.11; if (d < bd){ bd = d; bi = j; } }
+            const t = acc[bi]; t[0] += r*w; t[1] += g*w; t[2] += b*w; t[3] += w;
+          }
+          extra = extra.map((q, j) => acc[j][3] ? [acc[j][0]/acc[j][3], acc[j][1]/acc[j][3], acc[j][2]/acc[j][3]] : q);
+        }
+        for (const q of extra) pal.push(q);
       }
       for (const k of used){ hCnt[k] = 0; hR[k] = 0; hG[k] = 0; hB[k] = 0; }
       const out = new Uint8Array(256 * 3);
-      pal.forEach((p, i) => { out[i*3] = Math.round(p[0]); out[i*3+1] = Math.round(p[1]); out[i*3+2] = Math.round(p[2]); });
-      return {pal: out, count: pal.length, exact: null};
+      pal.forEach((q, i) => { out[i*3] = Math.round(q[0]); out[i*3+1] = Math.round(q[1]); out[i*3+2] = Math.round(q[2]); });
+      return {pal: out, count: Math.max(1, pal.length), exact: null, anchors, dither: !flat};
     }
 
     // 編碼器：一格一格加入（RGBA 畫面＋停留毫秒）。每格只記錄有變動的區塊，並給它自己的 256 色
     function encoder(W, H, opts = {}){
-      const out = writer(), T = 255, DITHER = opts.dither === false ? 0 : 0.85;
+      const out = writer(), T = 255, DITHER = opts.dither === false ? 0 : 0.75;
       out.bytes(new TextEncoder().encode("GIF89a")); out.u16(W); out.u16(H);
       out.byte(0x70); out.byte(0); out.byte(0);   // 沒有共用調色盤，每格各自帶
       out.bytes(new Uint8Array([0x21, 0xFF, 0x0B])); out.bytes(new TextEncoder().encode("NETSCAPE2.0"));
@@ -1658,36 +1678,32 @@ ${body}</div></body></html>`;
         };
         cache.fill(-1);
         const idx = new Uint8Array(n);
-        if (P.exact){
-          for (let y = 0; y < h; y++) for (let x = 0; x < w; x++){
-            const i = y * w + x;
+        const useDither = DITHER > 0 && P.dither;
+        // Floyd–Steinberg 抖色（只用在漸層／照片類的區域；常見顏色一律原色、不散點）
+        let eA = new Float32Array((w + 2) * 3), eB = new Float32Array((w + 2) * 3);
+        for (let y = 0; y < h; y++){
+          const ltr = (y & 1) === 0;
+          eB.fill(0);
+          for (let s2 = 0; s2 < w; s2++){
+            const x = ltr ? s2 : w - 1 - s2, i = y * w + x, e = (x + 1) * 3;
             if (!changed[i]){ idx[i] = T; continue; }
             const o = ((y0 + y) * W + x0 + x) * 4;
-            idx[i] = P.exact.get((cur[o] << 16) | (cur[o+1] << 8) | cur[o+2]);
+            const k24 = (cur[o] << 16) | (cur[o+1] << 8) | cur[o+2];
+            const a = P.anchors.get(k24);
+            if (a !== undefined){ idx[i] = a; continue; }   // 常見顏色：原色，不擴散誤差
+            if (!useDither){ idx[i] = nearest(cur[o], cur[o+1], cur[o+2]); continue; }
+            const r = Math.max(0, Math.min(255, cur[o] + eA[e])), g = Math.max(0, Math.min(255, cur[o+1] + eA[e+1])), b = Math.max(0, Math.min(255, cur[o+2] + eA[e+2]));
+            const v = nearest(r | 0, g | 0, b | 0); idx[i] = v;
+            let er = r - pal[v*3], eg = g - pal[v*3+1], eb = b - pal[v*3+2];
+            if (Math.abs(er) + Math.abs(eg) + Math.abs(eb) < 9) continue;   // 誤差很小就不擴散，平滑區域不會出現噪點
+            er *= DITHER; eg *= DITHER; eb *= DITHER;
+            const f = ltr ? 3 : -3;
+            eA[e+f] += er*7/16; eA[e+f+1] += eg*7/16; eA[e+f+2] += eb*7/16;
+            eB[e-f] += er*3/16; eB[e-f+1] += eg*3/16; eB[e-f+2] += eb*3/16;
+            eB[e] += er*5/16; eB[e+1] += eg*5/16; eB[e+2] += eb*5/16;
+            eB[e+f] += er/16; eB[e+f+1] += eg/16; eB[e+f+2] += eb/16;
           }
-        } else {
-          // Floyd–Steinberg 抖色（蛇行掃描），讓漸層不會變成一塊一塊
-          let eA = new Float32Array((w + 2) * 3), eB = new Float32Array((w + 2) * 3);
-          for (let y = 0; y < h; y++){
-            const ltr = (y & 1) === 0;
-            eB.fill(0);
-            for (let s = 0; s < w; s++){
-              const x = ltr ? s : w - 1 - s, i = y * w + x, e = (x + 1) * 3;
-              if (!changed[i]){ idx[i] = T; continue; }
-              const o = ((y0 + y) * W + x0 + x) * 4;
-              const r = Math.max(0, Math.min(255, cur[o] + eA[e])), g = Math.max(0, Math.min(255, cur[o+1] + eA[e+1])), b = Math.max(0, Math.min(255, cur[o+2] + eA[e+2]));
-              const v = nearest(r | 0, g | 0, b | 0); idx[i] = v;
-              if (DITHER){
-                const er = (r - pal[v*3]) * DITHER, eg = (g - pal[v*3+1]) * DITHER, eb = (b - pal[v*3+2]) * DITHER;
-                const f = ltr ? 3 : -3;
-                eA[e+f] += er*7/16; eA[e+f+1] += eg*7/16; eA[e+f+2] += eb*7/16;
-                eB[e-f] += er*3/16; eB[e-f+1] += eg*3/16; eB[e-f+2] += eb*3/16;
-                eB[e] += er*5/16; eB[e+1] += eg*5/16; eB[e+2] += eb*5/16;
-                eB[e+f] += er/16; eB[e+f+1] += eg/16; eB[e+f+2] += eb/16;
-              }
-            }
-            const t = eA; eA = eB; eB = t;
-          }
+          const t = eA; eA = eB; eB = t;
         }
         const cs = Math.max(2, Math.min(65535, Math.round(delay / 10)));
         out.bytes(new Uint8Array([0x21, 0xF9, 0x04, (1 << 2) | (prev ? 1 : 0), cs & 255, cs >> 8, T, 0]));
