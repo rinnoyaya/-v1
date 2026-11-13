@@ -122,6 +122,9 @@
   .amt{display:grid;grid-template-columns:1fr 92px;gap:6px}
   .req{color:var(--accent)}
   .drop{border:2px dashed var(--line);border-radius:12px;padding:14px;text-align:center;color:var(--muted);cursor:pointer;font-size:14px}
+  .gifbadge{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.62);color:#fff;font-size:11px;font-weight:700;letter-spacing:.06em;padding:2px 7px;border-radius:6px;pointer-events:none}
+  .pv .gifbadge{left:4px;top:4px;font-size:10px;padding:1px 5px}
+  .gif-tip{display:block;margin-top:6px;color:var(--muted);font-size:12.5px;line-height:1.5}
   .drop.over{border-color:var(--accent);background:var(--accent-soft)}
   .previews{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:10px}
   .pv{position:relative;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--paper);border:1px solid var(--line)}
@@ -226,6 +229,7 @@
     <div class="field">
       <label>完成插圖（可多張）</label>
       <div class="drop" id="drop">點此選擇圖片，或把圖片拖曳到這裡</div>
+      <small class="gif-tip">GIF 動圖會保留動畫。成功時圖片左上角會出現「GIF」標籤。<br>・沒出現標籤：手機在上傳前把它轉成了靜態圖，請改點「選擇檔案」，從「檔案」App 選。<br>・有標籤但還是不會動：請到 iPhone「設定」→「輔助使用」→「動態」，打開自動播放動畫影像的選項。</small>
       <input type="file" id="fFiles" accept="image/*" multiple hidden>
       <div class="previews" id="previews"></div>
     </div>
@@ -476,7 +480,7 @@
     list.innerHTML = `<div class="grid">${rs.map(r => {
       const imgs = r.images || [];
       const thumb = imgs.length
-        ? `<div class="thumbs" data-view="${esc(r.id)}"><img loading="lazy" data-asset="${esc(imgs[0])}" src="${blobUrl(imgs[0])}" alt="${esc(r.artist)} 的插圖">${imgs.length>1?`<span class="count">${imgs.length} 張</span>`:""}</div>`
+        ? `<div class="thumbs" data-view="${esc(r.id)}"><img loading="lazy" data-asset="${esc(imgs[0])}" src="${blobUrl(imgs[0])}" alt="${esc(r.artist)} 的插圖">${(r.gifs || []).includes(imgs[0]) ? `<span class="gifbadge">GIF</span>` : ""}${imgs.length>1?`<span class="count">${imgs.length} 張</span>`:""}</div>`
         : `<div class="thumbs empty">尚無插圖</div>`;
       return `<article class="card">${thumb}
         <div class="body">
@@ -544,7 +548,7 @@
     toggleArtistPanel(false);
     $("#fTwd").value = (rec && hasTwdOverride(rec)) ? rec.twd : "";
     updateTwdField();
-    formImages = (rec?.images || []).map(id => ({id}));
+    formImages = (rec?.images || []).map(id => ({id, gif: (rec.gifs || []).includes(id)}));
     uploadedThisSession = [];
     $("#formErr").textContent = "";
     renderPreviews();
@@ -615,7 +619,7 @@
   function renderPreviews(){
     $("#previews").innerHTML = formImages.map((im, i) => im.pending
       ? `<div class="pv loading">上傳中…</div>`
-      : `<div class="pv"><img data-asset="${esc(im.id)}" src="${blobUrl(im.id)}" alt=""><button type="button" class="x" data-rm="${i}" aria-label="移除">✕</button></div>`).join("");
+      : `<div class="pv"><img data-asset="${esc(im.id)}" src="${blobUrl(im.id)}" alt="">${im.gif ? `<span class="gifbadge">GIF</span>` : ""}<button type="button" class="x" data-rm="${i}" aria-label="移除">✕</button></div>`).join("");
     $("#saveBtn").disabled = pendingUploads > 0;
     $("#saveBtn").textContent = pendingUploads > 0 ? "圖片上傳中…" : "儲存";
   }
@@ -638,7 +642,22 @@
   $("#fFiles").addEventListener("change", e => { handleFiles(e.target.files); e.target.value = ""; });
 
   const OK_TYPES = ["image/png","image/jpeg","image/webp","image/gif"];
+  // 看檔案內容判斷是不是 GIF 動圖（回傳格數；不是 GIF 回傳 0）
+  async function gifFrames(blob){
+    try {
+      const u = new Uint8Array(await blob.arrayBuffer());
+      if (!(u[0] === 0x47 && u[1] === 0x49 && u[2] === 0x46)) return 0;   // "GIF"
+      let n = 0;
+      for (let i = 0; i < u.length - 2; i++) if (u[i] === 0x21 && u[i+1] === 0xF9 && u[i+2] === 0x04) n++;
+      return Math.max(n, 1);
+    } catch(_){ return 0; }
+  }
   async function prepareImage(file){
+    // 動圖（GIF／WebP）一律保留原檔：轉檔會讓動畫消失
+    const isGif = file.type === "image/gif" || /\.gif$/i.test(file.name);
+    if (isGif || file.type === "image/webp"){
+      return isGif && file.type !== "image/gif" ? new Blob([file], {type: "image/gif"}) : file;
+    }
     // 原圖 ≤ 15MB 且格式支援就保留原檔（不壓縮，保留畫質）
     if (OK_TYPES.includes(file.type) && file.size <= 15 * 1024 * 1024) return file;
     // 太大或格式不支援（例如 HEIC 在部分瀏覽器可解碼）→ 轉成高品質 JPEG
@@ -668,6 +687,11 @@
     for (const file of [...files]){
       if (!file.type.startsWith("image/") && !/\.(heic|heif)$/i.test(file.name)) continue;
       const slot = {pending:true}; formImages.push(slot); pendingUploads++; renderPreviews();
+      const looksGif = file.type === "image/gif" || /\.gif$/i.test(file.name);
+      const frames = (looksGif || file.type === "") ? await gifFrames(file) : 0;
+      if (looksGif && frames === 0){
+        $("#formErr").innerHTML = `⚠️「${esc(file.name)}」送到網頁時已經被手機轉成靜態圖片，所以不會動。請改點「選擇檔案」，從「檔案」App 選這張 GIF。`;
+      }
       try {
         const blob = await prepareImage(file);
         const type = OK_TYPES.includes(blob.type) ? blob.type : "image/jpeg";
@@ -676,11 +700,13 @@
         catch(err){ if (err?.code === "store_unavailable"){ await new Promise(r=>setTimeout(r,800)); res = await assets.upload(blob, {type}); } else throw err; }
         // 剛上傳的圖直接用本機檔案預覽（blob: 網址一定能顯示）
         urlMap.set(res.id, URL.createObjectURL(blob));
-        slot.pending = false; slot.id = res.id; uploadedThisSession.push(res.id);
+        slot.pending = false; slot.id = res.id; slot.gif = frames > 1; uploadedThisSession.push(res.id);
+        if (slot.gif) toast(`已收到 GIF 動圖（${frames} 格）`);
       } catch(err){
         formImages = formImages.filter(x => x !== slot);
         const code = err?.code || err?.message;
-        $("#formErr").textContent = code === "too_large" ? `「${file.name}」太大了，請換小一點的檔案。`
+        $("#formErr").textContent = code === "anim_too_large" ? `「${file.name}」這張動圖超過 20MB，放不進來。請先把 GIF 壓縮小一點再上傳（動畫才不會不見）。`
+          : code === "too_large" ? `「${file.name}」太大了，請換小一點的檔案。`
           : code === "quota_or_state" ? "儲存空間已滿，無法再上傳圖片。"
           : code === "unsupported_type" || code === "decode" ? `「${file.name}」的格式不支援，請改用 PNG／JPG。`
           : `「${file.name}」上傳失敗，請再試一次。`;
@@ -701,6 +727,7 @@
       twd: ($("#fCurrency").value !== "TWD" && $("#fTwd").value !== "" && isFinite(parseFloat($("#fTwd").value))) ? parseFloat($("#fTwd").value) : null,
       title: $("#fTitle").value.trim(), notes: $("#fNotes").value.trim(),
       images: formImages.filter(x => x.id).map(x => x.id),
+      gifs: formImages.filter(x => x.id && x.gif).map(x => x.id),
       createdAt: editing?.createdAt || Date.now(), updatedAt: Date.now(),
     };
     saving = true; $("#saveBtn").disabled = true; $("#saveBtn").textContent = "儲存中…";
@@ -1276,7 +1303,7 @@ ${body}</div></body></html>`;
     const {fresh: list, repair} = pendingRestore; let ok = 0, fixed = 0, imgFail = 0;
     const total = [...list, ...repair.map(x => x.r)].reduce((n,r)=>n+(r.images||[]).length,0); let done = 0;
     async function restoreImages(images){
-      const ids = [];
+      const ids = [], gifs = [];
       for (const im of images || []){
         if (!im || !im.data) continue;
         setProg(`還原插圖 ${++done}/${total}…`);
@@ -1286,27 +1313,28 @@ ${body}</div></body></html>`;
           const res = await assets.upload(blob, {type});
           urlMap.set(res.id, URL.createObjectURL(blob));   // 還原後立刻看得到
           ids.push(res.id);
+          if (type === "image/gif" && await gifFrames(blob) > 1) gifs.push(res.id);
         } catch(_){ imgFail++; }
       }
-      return ids;
+      return {ids, gifs};
     }
     try {
       for (const {r, cur} of repair){
-        const ids = await restoreImages(r.images);
+        const {ids, gifs} = await restoreImages(r.images);
         if (!ids.length) continue;
         const {id, ...curData} = cur;
-        await col.doc(String(id)).set({...curData, images: ids, updatedAt: Date.now()});
+        await col.doc(String(id)).set({...curData, images: ids, gifs, updatedAt: Date.now()});
         fixed++;
       }
       for (const r of list){
         const {id, images, ...data} = r;
-        const ids = await restoreImages(images);
+        const {ids, gifs} = await restoreImages(images);
         setProg(`寫入紀錄 ${ok+1}/${list.length}…`);
         const clean = {
           date: String(data.date || ""), amount: Number(data.amount) || 0, currency: String(data.currency || "TWD"),
           twd: (data.twd !== null && data.twd !== undefined && data.twd !== "" && isFinite(Number(data.twd))) ? Number(data.twd) : null,
           artist: String(data.artist || "").trim() || "不公開", title: String(data.title || ""), notes: String(data.notes || ""),
-          images: ids, createdAt: Number(data.createdAt) || Date.now(), updatedAt: Date.now(),
+          images: ids, gifs, createdAt: Number(data.createdAt) || Date.now(), updatedAt: Date.now(),
         };
         await col.doc(String(id)).set(clean);
         ok++;
