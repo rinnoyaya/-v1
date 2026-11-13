@@ -358,10 +358,10 @@
     <div id="bkSection" hidden>
     <p class="exp-sub" style="margin-top:-4px">你的紀錄只存在這台裝置。定期下載備份檔，換手機、清除瀏覽器資料或不小心刪掉時，都能從備份檔救回來。</p>
     <div class="opts">
-      <button data-exp="backup"><b>💾 下載完整備份檔</b><span>所有紀錄＋原尺寸插圖存成一個檔案，也可用來搬到新裝置</span></button>
-      <button id="bkRestoreBtn" type="button"><b>📂 從備份檔還原</b><span>選擇之前下載的備份檔，把不見的紀錄加回來</span></button>
+      <button data-exp="backup"><b>💾 下載完整備份檔</b><span>所有紀錄＋原尺寸插圖存成 ZIP 檔；委託很多時會自動分成幾個檔案，也可用來搬到新裝置</span></button>
+      <button id="bkRestoreBtn" type="button"><b>📂 從備份檔還原</b><span>選擇之前下載的備份檔（分成好幾個的話可以一次全選），把不見的紀錄加回來</span></button>
     </div>
-    <input type="file" id="bkFile" accept=".json,application/json" hidden>
+    <input type="file" id="bkFile" accept=".zip,.json,application/zip,application/json" multiple hidden>
     <p class="exp-sub" id="bkLast" style="margin:8px 2px 0"></p>
     <div class="bk-confirm" id="bkConfirm" hidden>
       <p id="bkInfo"></p>
@@ -1542,65 +1542,177 @@ ${body}</div></body></html>`;
     toast(`注意：${total} 張插圖中有 ${failed} 張讀取失敗，這份備份不包含那些圖`, 6000);
     return true;
   }
+  // ---------- 備份（ZIP 格式：插圖直接以原檔放進壓縮檔，不轉成文字，省記憶體） ----------
+  const BK_PART_LIMIT = 150 * 1024 * 1024;   // 每個備份檔最多約 150MB，太大就自動分成好幾個
+  const EXT_OF = {"image/gif":"gif","image/png":"png","image/webp":"webp","image/jpeg":"jpg"};
+  // 和 makeZip 一樣，但不把整張圖留在記憶體：算完 CRC 就只保留檔案參照
+  async function makeZipLazy(entries){
+    const enc = new TextEncoder(), out = [], central = []; let off = 0;
+    const d = new Date();
+    const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+    const dosDate = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+    for (const f of entries){
+      let crc, size;
+      { const buf = new Uint8Array(await f.blob.arrayBuffer()); crc = crc32(buf); size = buf.length; }
+      const name = enc.encode(f.name);
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+      lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+      lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true);
+      out.push(new Uint8Array(lh.buffer), name, f.blob);
+      const ch = new DataView(new ArrayBuffer(46));
+      ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+      ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+      ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true); ch.setUint32(42, off, true);
+      central.push(new Uint8Array(ch.buffer), name);
+      off += 30 + name.length + size;
+    }
+    const cdSize = central.reduce((n, u) => n + u.length, 0);
+    const end = new DataView(new ArrayBuffer(22));
+    end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+    end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+    return new Blob([...out, ...central, new Uint8Array(end.buffer)], {type: "application/zip"});
+  }
+
   async function exportBackup(progress){
     const all = [...records].sort((a,b) => String(a.date).localeCompare(String(b.date)));
     const total = all.reduce((n,r)=>n+(r.images||[]).length,0); let done = 0, failed = 0;
-    const parts = [`{"app":"commission-log","version":1,"exportedAt":${JSON.stringify(new Date().toISOString())},"count":${all.length},"rates":${JSON.stringify(rates)},"records":[`];
-    for (let i = 0; i < all.length; i++){
-      const {id, images, ...data} = all[i];
-      const imgs = [];
+    // 1. 讀出每筆的插圖（只拿檔案參照），依大小分組
+    const groups = []; let cur = {recs: [], files: [], size: 0};
+    for (const rec of all){
+      const {id, images, ...data} = rec;
+      const imgs = [], files = []; let size = 0;
       for (const aid of images || []){
-        progress(`打包插圖 ${++done}/${total}…`);
+        progress(`讀取插圖 ${++done}/${total}…`);
         try {
           const b = await readImage(aid);
           const type = OK_TYPES.includes(b.type) ? b.type : "image/jpeg";
-          imgs.push({type, data: await blobToB64(b)});
+          const file = `images/${String(aid).replace(/[^A-Za-z0-9_-]/g, "")}.${EXT_OF[type] || "jpg"}`;
+          imgs.push({file, type}); files.push({name: file, blob: b}); size += b.size;
         } catch(_){ failed++; }
       }
-      parts.push((i ? "," : "") + JSON.stringify({id, ...data, images: imgs}));
+      if (cur.recs.length && cur.size + size > BK_PART_LIMIT){ groups.push(cur); cur = {recs: [], files: [], size: 0}; }
+      cur.recs.push({id, ...data, images: imgs}); cur.files.push(...files); cur.size += size;
     }
-    parts.push(`],"imageCount":${done - failed},"imageFailed":${failed}}`);
-    if (failed && !confirmFailedImages(failed, total)) { progress(""); return; }
+    groups.push(cur);
+    if (failed) confirmFailedImages(failed, total);
+    // 2. 每組做成一個 ZIP，逐一儲存
+    const stamp = today(), n = groups.length, exportedAt = new Date().toISOString();
+    let saved = 0;
+    for (let i = 0; i < n; i++){
+      const g = groups[i];
+      progress(n > 1 ? `打包第 ${i+1}/${n} 個備份檔…` : "打包備份檔…");
+      const meta = {app: "commission-log", version: 2, exportedAt, part: i + 1, parts: n, total: all.length,
+        count: g.recs.length, rates, imageCount: g.files.length, imageFailed: failed, records: g.recs};
+      const zip = await makeZipLazy([{name: "backup.json", blob: new Blob([JSON.stringify(meta)], {type: "application/json"})}, ...g.files]);
+      progress(n > 1 ? `第 ${i+1}/${n} 個備份檔已準備好（${(zip.size/1048576).toFixed(1)} MB）` : "");
+      const name = n > 1 ? `委託紀錄_備份_${stamp}_${i+1}of${n}.zip` : `委託紀錄_備份_${stamp}.zip`;
+      if (!await save(name, zip)) break;
+      saved++;
+    }
     progress("");
-    const ok = await save(`委託紀錄_備份_${today()}.json`, new Blob(parts, {type:"application/json"}));
-    if (ok){
+    if (saved === n){
       try { localStorage.setItem("commission.lastBackup", today()); } catch(_){}
       $("#bkLast").textContent = lastBackupText();
-      toast(failed ? `備份完成，但有 ${failed} 張插圖讀取失敗` : `已備份 ${all.length} 筆紀錄`);
+      toast(n > 1 ? `已備份 ${all.length} 筆紀錄（分成 ${n} 個檔案，還原時請一起選取）` : `已備份 ${all.length} 筆紀錄`, 4500);
+    } else if (saved > 0){
+      toast(`只存了 ${saved}/${n} 個備份檔，請再備份一次`, 4500);
     }
+  }
+
+  // ---------- 讀取備份檔（新版 ZIP、舊版 JSON 都支援；ZIP 只讀需要的部分，不會整個載入記憶體） ----------
+  async function readZipIndex(file){
+    const tailStart = Math.max(0, file.size - 65557);
+    const tail = new Uint8Array(await file.slice(tailStart).arrayBuffer());
+    let p = -1;
+    for (let i = tail.length - 22; i >= 0; i--){ if (tail[i] === 0x50 && tail[i+1] === 0x4b && tail[i+2] === 0x05 && tail[i+3] === 0x06){ p = i; break; } }
+    if (p < 0) throw new Error("zip");
+    const dv = new DataView(tail.buffer, p);
+    const cdSize = dv.getUint32(12, true), cdOff = dv.getUint32(16, true);
+    const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+    const dec = new TextDecoder(), map = new Map();
+    for (let o = 0; o + 46 <= cd.byteLength && cd.getUint32(o, true) === 0x02014b50; ){
+      const method = cd.getUint16(o + 10, true), size = cd.getUint32(o + 20, true);
+      const nl = cd.getUint16(o + 28, true), xl = cd.getUint16(o + 30, true), cl = cd.getUint16(o + 32, true);
+      const local = cd.getUint32(o + 42, true);
+      const name = dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + o + 46, nl));
+      map.set(name, {method, size, local});
+      o += 46 + nl + xl + cl;
+    }
+    return map;
+  }
+  async function zipEntryBlob(file, ent, type){
+    if (ent.method !== 0) throw new Error("compressed");
+    const lh = new DataView(await file.slice(ent.local, ent.local + 30).arrayBuffer());
+    const start = ent.local + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    return file.slice(start, start + ent.size, type);
+  }
+  // 把任一種備份檔讀成 {meta, records}；每張插圖給一個 getBlob()，用到時才讀
+  async function loadBackupFile(f){
+    const head = new Uint8Array(await f.slice(0, 4).arrayBuffer());
+    if (head[0] === 0x50 && head[1] === 0x4b){   // "PK" → ZIP
+      const idx = await readZipIndex(f);
+      const metaEnt = idx.get("backup.json"); if (!metaEnt) throw new Error("format");
+      const j = JSON.parse(await (await zipEntryBlob(f, metaEnt, "application/json")).text());
+      if (j?.app !== "commission-log" || !Array.isArray(j.records)) throw new Error("format");
+      for (const r of j.records){
+        r.images = (r.images || []).map(im => {
+          const ent = im && idx.get(im.file);
+          return ent ? {type: im.type, getBlob: () => zipEntryBlob(f, ent, im.type)} : null;
+        }).filter(Boolean);
+      }
+      return j;
+    }
+    const j = JSON.parse(await f.text());   // 舊版 JSON 備份
+    if (j?.app !== "commission-log" || !Array.isArray(j.records)) throw new Error("format");
+    for (const r of j.records){
+      if (!r) continue;
+      r.images = (r.images || []).filter(im => im && im.data).map(im => ({type: im.type, getBlob: async () => b64ToBlob(im.data, OK_TYPES.includes(im.type) ? im.type : "image/jpeg")}));
+    }
+    return j;
   }
 
   let pendingRestore = null;
   $("#bkRestoreBtn").onclick = () => { if (!exporting) $("#bkFile").click(); };
   $("#bkFile").addEventListener("change", async e => {
-    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
     setProg("讀取備份檔…");
     try {
-      const j = JSON.parse(await f.text());
-      if (j?.app !== "commission-log" || !Array.isArray(j.records)) throw new Error("format");
-      const have = new Set(records.map(r => r.id));
-      const fresh = j.records.filter(r => r && r.id && !have.has(String(r.id)));
+      // 可以一次選好幾個（分割的）備份檔
+      const all = new Map(); let when = null, partsSeen = new Set(), partsTotal = 0, bad = 0, failedNote = 0, mergedRates = null;
+      for (const f of files){
+        let j; try { j = await loadBackupFile(f); } catch(_){ bad++; continue; }
+        if (!when && j.exportedAt) when = j.exportedAt;
+        if (j.parts > 1){ partsTotal = j.parts; partsSeen.add(j.part); }
+        if (j.imageFailed) failedNote = Math.max(failedNote, j.imageFailed);
+        if (j.rates && typeof j.rates === "object") mergedRates = {...(mergedRates || {}), ...j.rates};
+        for (const r of j.records){ if (r && r.id && !all.has(String(r.id))) all.set(String(r.id), r); }
+      }
+      if (!all.size) throw new Error("format");
+      const recs = [...all.values()];
       // 備份裡的匯率：只補上目前沒設定的幣別
-      if (j.rates && typeof j.rates === "object"){
+      if (mergedRates){
         const merged = {...rates}; let changed = false;
-        for (const c of FX_CURS){ const v = Number(j.rates[c]); if (!(merged[c] > 0) && v > 0){ merged[c] = v; changed = true; } }
+        for (const c of FX_CURS){ const v = Number(mergedRates[c]); if (!(merged[c] > 0) && v > 0){ merged[c] = v; changed = true; } }
         if (changed){ try { await ratesStore.save(merged); rates = merged; render(); } catch(_){} }
       }
+      const have = new Set(records.map(r => String(r.id)));
+      const fresh = recs.filter(r => !have.has(String(r.id)));
       // 已存在、但插圖全部顯示不出來的紀錄：用備份裡的插圖補回
       const byId = new Map(records.map(r => [String(r.id), r]));
       const repair = [];
-      for (const r of j.records){
-        if (!r || !r.id) continue;
+      for (const r of recs){
         const cur = byId.get(String(r.id)); if (!cur) continue;
-        const bimgs = (r.images || []).filter(im => im && im.data);
         const working = (cur.images || []).filter(id => urlMap.has(id));
-        if (bimgs.length && !working.length) repair.push({r, cur});
+        if ((r.images || []).length && !working.length) repair.push({r, cur});
       }
       pendingRestore = {fresh, repair};
-      const imgTotal = j.records.reduce((n,r) => n + ((r && r.images) || []).filter(im => im && im.data).length, 0);
-      const when = j.exportedAt ? new Date(j.exportedAt).toLocaleString("zh-TW") : "未知";
-      const lines = [`備份時間：${esc(when)}`, `備份檔共 ${j.records.length} 筆紀錄、${imgTotal} 張插圖。`];
-      if (!imgTotal && j.records.some(r => r && (r.images || []).length === 0)) lines.push(`⚠️ 這份備份檔裡沒有任何插圖，只能還原文字明細。${j.imageFailed ? `（備份時有 ${j.imageFailed} 張讀取失敗）` : ""}`);
+      const imgTotal = recs.reduce((n,r) => n + (r.images || []).length, 0);
+      const whenStr = when ? new Date(when).toLocaleString("zh-TW") : "未知";
+      const lines = [`備份時間：${esc(whenStr)}`, `${files.length > 1 ? `選了 ${files.length} 個備份檔，` : ""}共 ${recs.length} 筆紀錄、${imgTotal} 張插圖。`];
+      if (partsTotal > 1 && partsSeen.size < partsTotal) lines.push(`⚠️ 這份備份分成 ${partsTotal} 個檔案，你只選了 ${partsSeen.size} 個。可以先還原這些，之後再選其餘的檔案。`);
+      if (bad) lines.push(`⚠️ 有 ${bad} 個檔案不是委託紀錄簿的備份檔，已略過。`);
+      if (!imgTotal) lines.push(`⚠️ 這些備份檔裡沒有任何插圖，只能還原文字明細。${failedNote ? `（備份時有 ${failedNote} 張讀取失敗）` : ""}`);
       if (fresh.length) lines.push(`<b>${fresh.length} 筆</b>目前清單裡沒有，會被加回來。`);
       if (repair.length) lines.push(`<b>${repair.length} 筆</b>已在清單中但插圖顯示不出來，會用備份裡的插圖補回。`);
       if (!fresh.length && !repair.length) lines.push("備份裡的紀錄和插圖目前都已在清單中，不需要還原。");
@@ -1624,11 +1736,12 @@ ${body}</div></body></html>`;
     async function restoreImages(images){
       const ids = [], gifs = [];
       for (const im of images || []){
-        if (!im || !im.data) continue;
+        if (!im || !im.getBlob) continue;
         setProg(`還原插圖 ${++done}/${total}…`);
         try {
           const type = OK_TYPES.includes(im.type) ? im.type : "image/jpeg";
-          const blob = b64ToBlob(im.data, type);
+          const raw = await im.getBlob();
+          const blob = raw.type === type ? raw : new Blob([raw], {type});
           const res = await assets.upload(blob, {type});
           urlMap.set(res.id, URL.createObjectURL(blob));   // 還原後立刻看得到
           ids.push(res.id);
