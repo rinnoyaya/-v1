@@ -107,7 +107,15 @@
   .share-preview .ph{padding:40px 0;color:var(--muted);font-size:14px}
   .wm-box{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;background:var(--paper)}
   .wm-box .chk{margin:0}
-  .wm-opts{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
+  .wm-opts{display:grid;grid-template-columns:1fr;gap:8px;margin-top:8px}
+  .wm-range{display:grid;grid-template-columns:auto auto 1fr auto 3.2em;align-items:center;gap:8px;font-size:13px}
+  .wm-range label{font-weight:700;color:var(--ink)}
+  .wm-range .end{color:var(--muted);font-size:12px}
+  .wm-range input[type=range]{width:100%;accent-color:var(--accent);min-width:0}
+  .wm-range .val{text-align:right;font-variant-numeric:tabular-nums}
+  .wm-preview-wrap{position:relative}
+  .wm-preview{width:100%;height:auto;display:block;border-radius:10px;border:1px solid var(--line);background:var(--card)}
+  .wm-preview-wrap small{position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;padding:2px 7px;border-radius:6px}
   .wm-opts input{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 10px;min-width:0}
   .wm-opts .seg button{padding:6px 10px}
   .wm-hint{display:block;color:var(--muted);font-size:12.5px;margin-top:6px}
@@ -274,8 +282,12 @@
       <label class="chk"><input type="checkbox" id="wmOn"> 🛡️ 加上浮水印（防盜圖）</label>
       <div class="wm-opts" id="wmOpts">
         <input type="text" id="wmText" maxlength="40" placeholder="浮水印文字" autocomplete="off">
-        <div class="seg" id="wmStrength" role="group" aria-label="浮水印強度">
-          <button type="button" data-wm="1">淡</button><button type="button" data-wm="2">中</button><button type="button" data-wm="3">明顯</button>
+        <div class="wm-range">
+          <label for="wmOpacity">不透明度</label>
+          <span class="end">透明</span>
+          <input type="range" min="0" max="100" step="1" id="wmOpacity">
+          <span class="end">清楚</span>
+          <b class="val" id="wmOpacityVal">50%</b>
         </div>
       </div>
       <small class="wm-hint" id="wmHint"></small>
@@ -319,12 +331,17 @@
     <div id="expSection">
     <p class="exp-sub" id="expSub"></p>
     <div class="wm-box">
-      <label class="chk"><input type="checkbox" id="expWm"> 🛡️ 匯出圖片／PDF 時加上浮水印</label>
+      <label class="chk"><input type="checkbox" id="expWm"> 🛡️ 匯出圖片／PDF／HTML 時加上浮水印</label>
       <div class="wm-opts" id="expWmOpts">
         <input type="text" id="expWmText" maxlength="40" placeholder="浮水印文字" autocomplete="off">
-        <div class="seg" id="expWmStrength" role="group" aria-label="浮水印強度">
-          <button type="button" data-wm="1">淡</button><button type="button" data-wm="2">中</button><button type="button" data-wm="3">明顯</button>
+        <div class="wm-range">
+          <label for="expWmOpacity">不透明度</label>
+          <span class="end">透明</span>
+          <input type="range" min="0" max="100" step="1" id="expWmOpacity">
+          <span class="end">清楚</span>
+          <b class="val" id="expWmOpacityVal">50%</b>
         </div>
+        <div class="wm-preview-wrap"><canvas id="expWmPreview" class="wm-preview" width="720" height="300"></canvas><small id="expWmPreviewCap">即時預覽</small></div>
       </div>
       <small class="wm-hint" id="expWmHint"></small>
     </div>
@@ -605,7 +622,11 @@
     $("#formErr").textContent = "";
     renderPreviews();
     $("#formOverlay").classList.add("show");
-    setTimeout(() => (rec ? $("#fAmount") : $("#fArtist")).focus(), 50);
+    setTimeout(() => {
+      // 只有在使用者還沒點其他欄位時，才自動把游標放進來
+      const ae = document.activeElement;
+      if (!ae || ae === document.body || !$("#form").contains(ae)) (rec ? $("#fAmount") : $("#fArtist")).focus();
+    }, 50);
   }
   function updateTwdField(){
     const cur = $("#fCurrency").value, amt = parseFloat($("#fAmount").value);
@@ -890,11 +911,12 @@
     await save(`委託紀錄_${stamp()}.csv`, "﻿" + rows.join("\r\n"));
   };
 
-  async function imgToDataUrl(id){
+  async function imgToDataUrl(id, r){
     const bmp = await loadBitmap(await readImage(id));
     const max = 1400, s = Math.min(1, max / Math.max(bmp.width, bmp.height));
     const c = document.createElement("canvas"); c.width = Math.round(bmp.width*s); c.height = Math.round(bmp.height*s);
     const ctx = c.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(bmp,0,0,c.width,c.height);
+    if (wmSettings.export) drawWatermark(ctx, 0, 0, c.width, c.height, wmTextFor(r), wmSettings.opacity, 0);   // HTML 也加浮水印
     return c.toDataURL("image/jpeg", 0.85);
   }
 
@@ -909,7 +931,7 @@
         let imgs = "";
         for (const id of r.images || []){
           btn.textContent = `整理插圖 ${++done}/${total}…`;
-          try { imgs += `<img src="${await imgToDataUrl(id)}" alt="">`; } catch(e){}
+          try { imgs += `<img src="${await imgToDataUrl(id, r)}" alt="">`; } catch(e){}
         }
         body += `<section><div class="h"><b>繪師：${esc(r.artist)}</b><span>${esc(fmtAmount(r.amount, r.currency))}</span></div>
           <div class="m">${esc(r.date)}${r.title?`・${esc(r.title)}`:""}${isTWD(r) ? "" : `<span class="t">${esc(twdNote(r))}</span>`}</div>
@@ -1037,8 +1059,15 @@ ${body}</div></body></html>`;
 
   // ---------- 浮水印網格 ----------
   const WM_KEY = "commission.wm";
-  let wmSettings = {text: "", strength: 2, share: true, export: false};
-  try { wmSettings = {...wmSettings, ...(JSON.parse(localStorage.getItem(WM_KEY) || "{}") || {})}; } catch(_){}
+  let wmSettings = {text: "", opacity: 50, share: true, export: false};
+  try {
+    const stored = JSON.parse(localStorage.getItem(WM_KEY) || "{}") || {};
+    // 舊版的「淡／中／明顯」換算成不透明度
+    if ((stored.opacity === undefined || stored.opacity === null) && stored.strength) stored.opacity = ({1:30, 2:50, 3:75})[stored.strength] ?? 50;
+    wmSettings = {...wmSettings, ...stored};
+  } catch(_){}
+  wmSettings.opacity = Math.max(0, Math.min(100, Math.round(Number(wmSettings.opacity) || 0)));
+  delete wmSettings.strength;
   function saveWm(){ try { localStorage.setItem(WM_KEY, JSON.stringify(wmSettings)); } catch(_){} }
   function wmTextFor(r){
     const t = (wmSettings.text || "").trim();
@@ -1047,9 +1076,9 @@ ${body}</div></body></html>`;
     return a ? `© ${a}・禁止轉載` : "僅供展示・禁止轉載";
   }
   // 在一塊區域裡畫斜向重複的文字網格（白字＋深色描邊，淺色深色圖都看得到）
-  function drawWatermark(ctx, x, y, w, h, text, strength, radius){
-    if (!text || w < 8 || h < 8) return;
-    const alpha = [0, 0.22, 0.36, 0.55][strength] || 0.36;
+  function drawWatermark(ctx, x, y, w, h, text, opacity, radius){
+    const alpha = Math.max(0, Math.min(1, Number(opacity) / 100));
+    if (!text || w < 8 || h < 8 || alpha <= 0) return;
     ctx.save();
     if (radius) { rr(ctx, x, y, w, h, radius); ctx.clip(); } else { ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip(); }
     const size = Math.max(12, Math.round(Math.min(w, h) * 0.06));
@@ -1060,11 +1089,11 @@ ${body}</div></body></html>`;
     ctx.translate(x + w / 2, y + h / 2); ctx.rotate(-Math.PI / 6);
     const R = Math.hypot(w, h) / 2 + stepX;
     // 網格線
-    ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.55})`; ctx.lineWidth = Math.max(1, size * 0.06);
+    ctx.strokeStyle = `rgba(255,255,255,${alpha * 0.45})`; ctx.lineWidth = Math.max(1, size * 0.06);
     for (let yy = -R; yy <= R; yy += stepY){ ctx.beginPath(); ctx.moveTo(-R, yy + stepY / 2); ctx.lineTo(R, yy + stepY / 2); ctx.stroke(); }
     // 文字
     ctx.lineJoin = "round"; ctx.lineWidth = Math.max(2, size * 0.14);
-    ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.55})`; ctx.fillStyle = `rgba(255,255,255,${alpha + 0.1})`;
+    ctx.strokeStyle = `rgba(0,0,0,${alpha * 0.5})`; ctx.fillStyle = `rgba(255,255,255,${alpha})`;
     let row = 0;
     for (let yy = -R; yy <= R; yy += stepY, row++){
       const off = (row % 2) * stepX / 2;
@@ -1073,7 +1102,7 @@ ${body}</div></body></html>`;
     ctx.restore();
   }
   // 原始插圖加浮水印：畫到畫布上再存檔（PNG 保留透明，其餘存高品質 JPG）
-  async function watermarkBlob(blob, text, strength){
+  async function watermarkBlob(blob, text, opacity){
     const im = await loadBitmap(blob);
     const max = 4096, s = Math.min(1, max / Math.max(im.width, im.height));
     const c = document.createElement("canvas"); c.width = Math.round(im.width * s); c.height = Math.round(im.height * s);
@@ -1081,7 +1110,7 @@ ${body}</div></body></html>`;
     const png = blob.type === "image/png";
     if (!png){ ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height); }
     ctx.drawImage(im, 0, 0, c.width, c.height);
-    drawWatermark(ctx, 0, 0, c.width, c.height, text, strength, 0);
+    drawWatermark(ctx, 0, 0, c.width, c.height, text, opacity, 0);
     const out = await new Promise(r => c.toBlob(r, png ? "image/png" : "image/jpeg", 0.92));
     c.width = c.height = 0;
     return out;
@@ -1110,7 +1139,7 @@ ${body}</div></body></html>`;
       } else if (p.k === "imgs"){
         for (const c of p.cells){
           drawCover(ctx, c.img, ix + c.x, y + c.y, c.w, c.h, 14);
-          if (wm && c.img) drawWatermark(ctx, ix + c.x, y + c.y, c.w, c.h, wmTextFor(L.r), wm.strength, 14);
+          if (wm && c.img) drawWatermark(ctx, ix + c.x, y + c.y, c.w, c.h, wmTextFor(L.r), wm.opacity, 14);
           if (c.more){
             ctx.save(); rr(ctx, ix+c.x, y+c.y, c.w, c.h, 14); ctx.fillStyle = "rgba(0,0,0,.55)"; ctx.fill();
             ctx.fillStyle = "#fff"; ctx.font = `700 44px ${SANS}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -1172,7 +1201,7 @@ ${body}</div></body></html>`;
       ctx.fillStyle = PC.paper; ctx.fillRect(0,0,CW,H);
       let y = PAD;
       if (pg.head){ head.draw(ctx, y); y += head.h; }
-      for (const b of pg.items){ drawRecord(ctx, b, y, wmSettings.export ? {strength: wmSettings.strength} : null); y += b.h + GAP; }
+      for (const b of pg.items){ drawRecord(ctx, b, y, wmSettings.export ? {opacity: wmSettings.opacity} : null); y += b.h + GAP; }
       ctx.fillStyle = PC.muted; ctx.font = `400 22px ${SANS}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
       ctx.fillText(pages.length > 1 ? `委託紀錄簿・${pi+1} / ${pages.length}` : "委託紀錄簿", CW/2, H - 26);
       ctx.textAlign = "left";
@@ -1284,7 +1313,7 @@ ${body}</div></body></html>`;
     const c = document.createElement("canvas"); c.width = CW; c.height = H;
     const ctx = c.getContext("2d");
     ctx.fillStyle = PC.paper; ctx.fillRect(0, 0, CW, H);
-    drawRecord(ctx, L, PAD, wmSettings.share ? {strength: wmSettings.strength} : null);
+    drawRecord(ctx, L, PAD, wmSettings.share ? {opacity: wmSettings.opacity} : null);
     ctx.fillStyle = PC.muted; ctx.font = `400 22px ${SANS}`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
     ctx.fillText("委託紀錄簿 by 懧雃", CW/2, H - 28); ctx.textAlign = "left";
     return c;
@@ -1333,7 +1362,7 @@ ${body}</div></body></html>`;
         let b = await readImage(imgs[i]);
         if (wmSettings.share){
           $("#shareProg").textContent = `替插圖加上浮水印 ${i+1}/${imgs.length}…`;
-          b = await watermarkBlob(b, wmTextFor(r), wmSettings.strength);
+          b = await watermarkBlob(b, wmTextFor(r), wmSettings.opacity);
         }
         const ext = EXT[b.type] || ((r.gifs || []).includes(imgs[i]) ? "gif" : "jpg");
         files.push({name: `${safeName(r.title || r.artist)}_${r.date}${imgs.length > 1 ? "_" + (i+1) : ""}.${ext}`, blob: b});
@@ -1358,8 +1387,8 @@ ${body}</div></body></html>`;
     $("#wmOpts").hidden = !wmSettings.share;
     $("#wmText").value = wmSettings.text || "";
     $("#wmText").placeholder = `留空會用「${wmTextFor(shareRec)}」`;
-    $("#wmStrength").querySelectorAll("button").forEach(b => b.classList.toggle("on", Number(b.dataset.wm) === wmSettings.strength));
-    $("#wmHint").textContent = wmSettings.share ? "浮水印會鋪滿插圖，卡片圖和原始插圖都會加上。" : "關閉時，分享出去的插圖不會有浮水印。";
+    $("#wmOpacity").value = wmSettings.opacity; $("#wmOpacityVal").textContent = wmSettings.opacity + "%";
+    $("#wmHint").textContent = wmSettings.share ? "浮水印會鋪滿插圖，卡片圖和原始插圖都會加上。拖曳「不透明度」可以在上方預覽即時看到效果。" : "關閉時，分享出去的插圖不會有浮水印。";
   }
   let wmTimer = null;
   function wmChanged(regenOrig = true){
@@ -1369,21 +1398,54 @@ ${body}</div></body></html>`;
   }
   $("#wmOn").addEventListener("change", e => { wmSettings.share = e.target.checked; wmChanged(); });
   $("#wmText").addEventListener("input", e => { wmSettings.text = e.target.value; saveWm(); updateOrigDesc(); clearTimeout(wmTimer); wmTimer = setTimeout(() => { refreshSharePreview(); prepareOrigFiles(); }, 500); });
-  $("#wmStrength").addEventListener("click", e => { const b = e.target.closest("[data-wm]"); if (!b) return; wmSettings.strength = Number(b.dataset.wm); wmChanged(); });
+  // 拖曳時即時更新預覽；放開後才重新產生原始插圖檔
+  let wmLiveTimer = null;
+  $("#wmOpacity").addEventListener("input", e => {
+    wmSettings.opacity = Number(e.target.value); $("#wmOpacityVal").textContent = wmSettings.opacity + "%"; saveWm();
+    clearTimeout(wmLiveTimer); wmLiveTimer = setTimeout(refreshSharePreview, 60);
+  });
+  $("#wmOpacity").addEventListener("change", () => { clearTimeout(wmTimer); wmTimer = setTimeout(() => { refreshSharePreview(); prepareOrigFiles(); }, 200); });
   // 匯出清單的浮水印設定（文字和強度跟分享共用，開關各自獨立）
   function syncExpWmUI(){
     $("#expWm").checked = !!wmSettings.export;
     $("#expWmOpts").hidden = !wmSettings.export;
     $("#expWmText").value = wmSettings.text || "";
     $("#expWmText").placeholder = "留空會用「© 各筆的繪師名・禁止轉載」";
-    $("#expWmStrength").querySelectorAll("button").forEach(b => b.classList.toggle("on", Number(b.dataset.wm) === wmSettings.strength));
+    $("#expWmOpacity").value = wmSettings.opacity; $("#expWmOpacityVal").textContent = wmSettings.opacity + "%";
+    if (wmSettings.export) drawExpWmPreview();
     $("#expWmHint").textContent = wmSettings.export
-      ? "浮水印會鋪在每一張插圖上；只套用在「圖片」和「PDF」，CSV 和 HTML 不受影響。"
-      : "需要防盜圖時打勾，選「圖片」或「PDF」匯出就會加上浮水印。";
+      ? "浮水印會鋪在每一張插圖上；套用在「圖片」「PDF」「HTML」，CSV 表格不受影響。"
+      : "需要防盜圖時打勾，匯出圖片、PDF 或 HTML 就會加上浮水印。";
   }
   $("#expWm").addEventListener("change", e => { wmSettings.export = e.target.checked; saveWm(); syncExpWmUI(); });
-  $("#expWmText").addEventListener("input", e => { wmSettings.text = e.target.value; saveWm(); });
-  $("#expWmStrength").addEventListener("click", e => { const b = e.target.closest("[data-wm]"); if (!b) return; wmSettings.strength = Number(b.dataset.wm); saveWm(); syncExpWmUI(); });
+  $("#expWmText").addEventListener("input", e => { wmSettings.text = e.target.value; saveWm(); drawExpWmPreview(); });
+  $("#expWmOpacity").addEventListener("input", e => {
+    wmSettings.opacity = Number(e.target.value); $("#expWmOpacityVal").textContent = wmSettings.opacity + "%"; saveWm(); drawExpWmPreview();
+  });
+  // 匯出的即時預覽：用目前清單第一張插圖（沒有插圖就用範例底圖）
+  const previewBmpCache = new Map();
+  let expPrevToken = 0;
+  async function drawExpWmPreview(){
+    const cv = $("#expWmPreview"); if (!cv) return;
+    const my = ++expPrevToken;
+    const rec = visibleRecords().find(r => (r.images || []).length) || null;
+    let bmp = null;
+    if (rec){
+      const id = rec.images[0];
+      if (!previewBmpCache.has(id)){ try { previewBmpCache.set(id, await loadForExport(id)); } catch(_){ previewBmpCache.set(id, null); } }
+      bmp = previewBmpCache.get(id);
+      if (my !== expPrevToken) return;
+    }
+    const ctx = cv.getContext("2d"), W = cv.width, H = cv.height;
+    ctx.clearRect(0, 0, W, H);
+    if (bmp) drawCover(ctx, bmp, 0, 0, W, H, 0);
+    else {
+      const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, "#e9c7b8"); g.addColorStop(1, "#8e6a5a");
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    }
+    drawWatermark(ctx, 0, 0, W, H, wmTextFor(rec), wmSettings.opacity, 0);
+    $("#expWmPreviewCap").textContent = `即時預覽・不透明度 ${wmSettings.opacity}%${rec ? "" : "（範例底圖）"}`;
+  }
   syncExpWmUI();
   $("#shAmount").addEventListener("change", refreshSharePreview);
   $("#shNotes").addEventListener("change", refreshSharePreview);

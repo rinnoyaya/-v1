@@ -1,6 +1,6 @@
 // 委託紀錄簿：離線快取。只快取 App 本身的檔案，你的紀錄不會經過這裡。
 // 更新 App 時，把下面的版本號改掉（例如 v8），已安裝的人下次打開就會換成新版。
-const VERSION = "v15";
+const VERSION = "v17";
 const CORE = ["./", "./index.html", "./manifest.webmanifest", "./icons/apple-touch-icon.png", "./icons/icon-192.png", "./icons/icon-512.png"];
 
 self.addEventListener("install", e => {
